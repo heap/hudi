@@ -19,7 +19,7 @@
 
 package org.apache.hudi.functional
 
-import org.apache.hudi.DataSourceReadOptions.{QUERY_TYPE_INCREMENTAL_OPT_VAL, QUERY_TYPE_READ_OPTIMIZED_OPT_VAL}
+import org.apache.hudi.DataSourceReadOptions.QUERY_TYPE_READ_OPTIMIZED_OPT_VAL
 import org.apache.hudi.HoodieDataSourceHelpers.{hasNewCommits, latestCommit, listCommitsSince}
 import org.apache.hudi.common.config.HoodieMetadataConfig
 import org.apache.hudi.common.fs.FSUtils
@@ -121,16 +121,17 @@ class TestSparkSqlCoreFlow extends HoodieSparkSqlTestBase {
     compareUpdateDfWithHudiDf(inputDf2, snapshotDf3, snapshotDf3)
     snapshotDf3.unpersist(true)
 
-    // Read Incremental Query, need to use spark-ds because functionality does not exist for spark sql
+    // Read Incremental Query, uses hudi_table_changes() table valued function for spark sql
     // we have 2 commits, try pulling the first commit (which is not the latest)
     //HUDI-5266
+<<<<<<< HEAD
     val firstCommit = listCommitsSince(fs, tableBasePath, "000").get(0)
-    val hoodieIncViewDf1 = spark.read.format("org.apache.hudi")
-      .option(DataSourceReadOptions.QUERY_TYPE.key, QUERY_TYPE_INCREMENTAL_OPT_VAL)
-      .option(DataSourceReadOptions.BEGIN_INSTANTTIME.key, "000")
-      .option(DataSourceReadOptions.END_INSTANTTIME.key, firstCommit)
-      .load(tableBasePath)
-    //val hoodieIncViewDf1 = doIncRead(tableName, isMetadataEnabledOnRead, "000", firstCommit)
+    val hoodieIncViewDf1 = spark.sql(s"select * from hudi_table_changes('$tableName', '000', '$firstCommit')")
+=======
+    val firstCommit = HoodieDataSourceHelpers.listCommitsSince(fs, tableBasePath, "000").get(0)
+    val hoodieIncViewDf1 = spark.sql(s"select * from hudi_table_changes('$tableName', 'earliest', '$firstCommit')")
+>>>>>>> b846e14a7d (use earliest instead of 000 in spark sql core flow test)
+
     assertEquals(100, hoodieIncViewDf1.count()) // 100 initial inserts must be pulled
     var countsPerCommit = hoodieIncViewDf1.groupBy("_hoodie_commit_time").count().collect()
     assertEquals(1, countsPerCommit.length)
@@ -141,11 +142,7 @@ class TestSparkSqlCoreFlow extends HoodieSparkSqlTestBase {
 
     //another incremental query with commit2 and commit3
     //HUDI-5266
-    val hoodieIncViewDf2 = spark.read.format("org.apache.hudi")
-      .option(DataSourceReadOptions.QUERY_TYPE.key, QUERY_TYPE_INCREMENTAL_OPT_VAL)
-      .option(DataSourceReadOptions.BEGIN_INSTANTTIME.key, commitInstantTime2)
-      .option(DataSourceReadOptions.END_INSTANTTIME.key(), commitInstantTime3)
-      .load(tableBasePath)
+    val hoodieIncViewDf2 = spark.sql(s"select * from hudi_table_changes('$tableName', '$commitInstantTime2', '$commitInstantTime3')")
 
     assertEquals(uniqueKeyCnt2, hoodieIncViewDf2.count()) // 60 records must be pulled
     countsPerCommit = hoodieIncViewDf2.groupBy("_hoodie_commit_time").count().collect()
