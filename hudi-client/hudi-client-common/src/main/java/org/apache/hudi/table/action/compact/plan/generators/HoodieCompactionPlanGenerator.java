@@ -30,6 +30,7 @@ import org.apache.hudi.table.HoodieTable;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static java.util.stream.Collectors.toList;
@@ -49,6 +50,21 @@ public class HoodieCompactionPlanGenerator<T extends HoodieRecordPayload, I, K, 
     // compactions only
     return writeConfig.getCompactionStrategy().generateCompactionPlan(writeConfig, operations,
         CompactionUtils.getAllPendingCompactionPlans(metaClient).stream().map(Pair::getValue).collect(toList()));
+  }
+
+  @Override
+  protected List<String> listPartitionsPaths(HoodieEngineContext engineContext, HoodieWriteConfig writeConfig, String basePathStr) {
+    String compactionStrategy = writeConfig.getCompactionStrategy().getClass().getName();
+    LOG.info("Compaction strategy is " + compactionStrategy);
+    if (compactionStrategy.equals("com.heap.datalake.compaction.SpecificPartitionsCompactionStrategy")) {
+      String[] partitions = writeConfig.getString("hoodie.compaction.include.partitions").split(",");
+      if (partitions.length > 0) {
+        LOG.info("Skipping listing all partitions in favor of partitions provided in config: " + Arrays.toString(partitions));
+        return Arrays.asList(partitions);
+      }
+    }
+    LOG.info("Defaulting to listing all partitions");
+    return super.listPartitionsPaths(engineContext, writeConfig, basePathStr);
   }
 
   @Override
