@@ -80,7 +80,7 @@ public abstract class BaseHoodieCompactionPlanGenerator<T extends HoodieRecordPa
     // TODO : check if maxMemory is not greater than JVM or executor memory
     // TODO - rollback any compactions in flight
     HoodieTableMetaClient metaClient = hoodieTable.getMetaClient();
-    List<String> partitionPaths = FSUtils.getAllPartitionPaths(engineContext, writeConfig.getMetadataConfig(), metaClient.getBasePath());
+    List<String> partitionPaths = listPartitionsPaths(engineContext, writeConfig, metaClient.getBasePath());
 
     // filter the partition paths if needed to reduce list status
     partitionPaths = filterPartitionPathsByStrategy(writeConfig, partitionPaths);
@@ -157,6 +157,10 @@ public abstract class BaseHoodieCompactionPlanGenerator<T extends HoodieRecordPa
   protected abstract HoodieCompactionPlan getCompactionPlan(HoodieTableMetaClient metaClient, List<HoodieCompactionOperation> operations);
 
   protected abstract boolean filterLogCompactionOperations();
+
+  protected List<String> listPartitionsPaths(HoodieEngineContext engineContext, HoodieWriteConfig writeConfig, String basePathStr) {
+    return FSUtils.getAllPartitionPaths(engineContext, writeConfig.getMetadataConfig(), basePathStr);
+  }
 
   protected List<String> filterPartitionPathsByStrategy(HoodieWriteConfig writeConfig, List<String> partitionPaths) {
     return partitionPaths;
