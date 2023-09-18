@@ -145,7 +145,7 @@ public class WriteProfiles {
       case COPY_ON_WRITE:
         return metadata.getFileIdToFileStatus(hadoopConf, basePath);
       case MERGE_ON_READ:
-        return metadata.getFullPathToFileStatus(hadoopConf, basePath);
+        return metadata.getFullPathToFileStatus(hadoopConf, basePath, "");
       default:
         throw new AssertionError();
     }
