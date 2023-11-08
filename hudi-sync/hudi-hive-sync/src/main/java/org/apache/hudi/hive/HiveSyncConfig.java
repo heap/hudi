@@ -74,6 +74,10 @@ public class HiveSyncConfig extends HoodieSyncConfig {
   public static final ConfigProperty<String> HIVE_SYNC_COMMENT = HiveSyncConfigHolder.HIVE_SYNC_COMMENT;
   public static final ConfigProperty<String> HIVE_SYNC_TABLE_STRATEGY = HiveSyncConfigHolder.HIVE_SYNC_TABLE_STRATEGY;
 
+  public static final ConfigProperty<String> PARTITION_CACHE_PATH = ConfigProperty
+          .key("hoodie.datasource.hive_sync.partition_cache_path")
+          .noDefaultValue();
+
   public static final ConfigProperty<Boolean> HIVE_SYNC_FILTER_PUSHDOWN_ENABLED = ConfigProperty
       .key("hoodie.datasource.hive_sync.filter_pushdown_enabled")
       .defaultValue(false)
@@ -169,6 +173,9 @@ public class HiveSyncConfig extends HoodieSyncConfig {
     @Parameter(names = {"--sync-strategy"}, description = "Hive table synchronization strategy. Available option: RO, RT, ALL")
     public String syncStrategy;
 
+    @Parameter(names = {"--cache-file-path"}, description = "Path to file on local file system to cache partitions")
+    public String cacheFilePath;
+
     public boolean isHelp() {
       return hoodieSyncConfigParams.isHelp();
     }
@@ -197,11 +204,14 @@ public class HiveSyncConfig extends HoodieSyncConfig {
       props.setPropertyIfNonNull(HIVE_SYNC_BUCKET_SYNC_SPEC.key(), bucketSpec);
       props.setPropertyIfNonNull(HIVE_SYNC_COMMENT.key(), syncComment);
       props.setPropertyIfNonNull(HIVE_SYNC_TABLE_STRATEGY.key(), syncStrategy);
+
+      props.setPropertyIfNonNull(PARTITION_CACHE_PATH.key(), cacheFilePath);
       return props;
     }
   }
 
   public void validateParameters() {
     ValidationUtils.checkArgument(getIntOrDefault(HIVE_BATCH_SYNC_PARTITION_NUM) > 0, "batch-sync-num for sync hive table must be greater than 0, pls check your parameter");
+    ValidationUtils.checkArgument(getString(PARTITION_CACHE_PATH) != null, "cache-file-path must be provided for initial syncs");
   }
 }
