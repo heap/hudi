@@ -24,6 +24,7 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -44,7 +45,7 @@ public class FileListingCacheManager {
         if (Files.exists(path)) {
             try {
                 LOG.info("Found cache file at " + cacheFilePath + ". Reading partitions from file.");
-                List<String> partitions = Files.readAllLines(path);
+                List<String> partitions = Files.readAllLines(path, StandardCharsets.UTF_8);
                 LOG.info("Found " + partitions.size() + " partitions in local cache.");
                 return partitions;
             } catch (IOException e) {
@@ -56,7 +57,7 @@ public class FileListingCacheManager {
         List<String> partitions = syncClient.getWrittenPartitionsSince(Option.empty());
         try {
             LOG.info("Caching " + partitions.size() + "partitions to local storage at path " + cacheFilePath);
-            Files.write(path, partitions);
+            Files.write(path, partitions, StandardCharsets.UTF_8);
         } catch (IOException e) {
             LOG.warn("Unable to cache partitions.", e);
         }
