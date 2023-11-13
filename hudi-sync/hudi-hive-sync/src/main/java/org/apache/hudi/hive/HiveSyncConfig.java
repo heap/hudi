@@ -176,6 +176,13 @@ public class HiveSyncConfig extends HoodieSyncConfig {
     @Parameter(names = {"--cache-file-path"}, description = "Path to file on local file system to cache partitions")
     public String cacheFilePath;
 
+    @Parameter(names = {"--enable-filter-pushdown"}, description = "")
+    public Boolean enableFilterPushdown;
+
+    @Parameter(names = {"--filter-pushdown-max-size"}, description = "")
+    public Integer filterPushdownMaxSize;
+
+
     public boolean isHelp() {
       return hoodieSyncConfigParams.isHelp();
     }
@@ -204,6 +211,8 @@ public class HiveSyncConfig extends HoodieSyncConfig {
       props.setPropertyIfNonNull(HIVE_SYNC_BUCKET_SYNC_SPEC.key(), bucketSpec);
       props.setPropertyIfNonNull(HIVE_SYNC_COMMENT.key(), syncComment);
       props.setPropertyIfNonNull(HIVE_SYNC_TABLE_STRATEGY.key(), syncStrategy);
+      props.setPropertyIfNonNull(HIVE_SYNC_FILTER_PUSHDOWN_ENABLED.key(), enableFilterPushdown);
+      props.setPropertyIfNonNull(HIVE_SYNC_FILTER_PUSHDOWN_MAX_SIZE.key(), filterPushdownMaxSize);
 
       props.setPropertyIfNonNull(PARTITION_CACHE_PATH.key(), cacheFilePath);
       return props;
