@@ -52,6 +52,7 @@ import java.util.stream.Collectors;
 import static org.apache.hudi.common.util.StringUtils.isNullOrEmpty;
 import static org.apache.hudi.common.util.StringUtils.nonEmpty;
 import static org.apache.hudi.hive.HiveSyncConfig.HIVE_SYNC_FILTER_PUSHDOWN_ENABLED;
+import static org.apache.hudi.hive.HiveSyncConfig.PARTITION_FETCH_FILTER;
 import static org.apache.hudi.hive.HiveSyncConfigHolder.HIVE_AUTO_CREATE_DATABASE;
 import static org.apache.hudi.hive.HiveSyncConfigHolder.HIVE_IGNORE_EXCEPTIONS;
 import static org.apache.hudi.hive.HiveSyncConfigHolder.HIVE_SKIP_RO_SUFFIX_FOR_READ_OPTIMIZED_TABLE;
@@ -354,6 +355,9 @@ public class HiveSyncTool extends HoodieSyncTool implements AutoCloseable {
    */
   private List<Partition> getTablePartitions(String tableName, List<String> writtenPartitions) {
     if (!config.getBooleanOrDefault(HIVE_SYNC_FILTER_PUSHDOWN_ENABLED)) {
+      if (config.getString(PARTITION_FETCH_FILTER) != null && !config.getString(PARTITION_FETCH_FILTER).isEmpty()) {
+        return syncClient.getPartitionsByFilter(tableName, config.getString(PARTITION_FETCH_FILTER));
+      }
       return syncClient.getAllPartitions(tableName);
     }
 
@@ -384,6 +388,7 @@ public class HiveSyncTool extends HoodieSyncTool implements AutoCloseable {
       }
 
       List<Partition> hivePartitions = getTablePartitions(tableName, writtenPartitionsSince);
+      LOG.info("Partitions fetched from metastore: " + hivePartitions.size());
       List<PartitionEvent> partitionEvents =
           syncClient.getPartitionEvents(hivePartitions, writtenPartitionsSince, droppedPartitions);
 

@@ -78,6 +78,10 @@ public class HiveSyncConfig extends HoodieSyncConfig {
           .key("hoodie.datasource.hive_sync.partition_cache_path")
           .noDefaultValue();
 
+  public static final ConfigProperty<String> PARTITION_FETCH_FILTER = ConfigProperty
+          .key("hoodie.datasource.hive_sync.partition_fetch_filter")
+          .noDefaultValue();
+
   public static final ConfigProperty<Boolean> HIVE_SYNC_FILTER_PUSHDOWN_ENABLED = ConfigProperty
       .key("hoodie.datasource.hive_sync.filter_pushdown_enabled")
       .defaultValue(false)
@@ -182,6 +186,9 @@ public class HiveSyncConfig extends HoodieSyncConfig {
     @Parameter(names = {"--filter-pushdown-max-size"}, description = "")
     public Integer filterPushdownMaxSize;
 
+    @Parameter(names = {"--partition-fetch-filter"}, description = "Filter to use for fetching partitions from metastore")
+    public String partitionFetchFilter;
+
 
     public boolean isHelp() {
       return hoodieSyncConfigParams.isHelp();
@@ -213,6 +220,7 @@ public class HiveSyncConfig extends HoodieSyncConfig {
       props.setPropertyIfNonNull(HIVE_SYNC_TABLE_STRATEGY.key(), syncStrategy);
       props.setPropertyIfNonNull(HIVE_SYNC_FILTER_PUSHDOWN_ENABLED.key(), enableFilterPushdown);
       props.setPropertyIfNonNull(HIVE_SYNC_FILTER_PUSHDOWN_MAX_SIZE.key(), filterPushdownMaxSize);
+      props.setPropertyIfNonNull(PARTITION_FETCH_FILTER.key(), partitionFetchFilter);
 
       props.setPropertyIfNonNull(PARTITION_CACHE_PATH.key(), cacheFilePath);
       return props;
