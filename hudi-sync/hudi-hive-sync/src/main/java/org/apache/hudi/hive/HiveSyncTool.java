@@ -52,6 +52,7 @@ import java.util.stream.Collectors;
 import static org.apache.hudi.common.util.StringUtils.isNullOrEmpty;
 import static org.apache.hudi.common.util.StringUtils.nonEmpty;
 import static org.apache.hudi.hive.HiveSyncConfig.HIVE_SYNC_FILTER_PUSHDOWN_ENABLED;
+import static org.apache.hudi.hive.HiveSyncConfig.HIVE_SYNC_SKIP_UPDATE_EVENTS;
 import static org.apache.hudi.hive.HiveSyncConfigHolder.HIVE_AUTO_CREATE_DATABASE;
 import static org.apache.hudi.hive.HiveSyncConfigHolder.HIVE_IGNORE_EXCEPTIONS;
 import static org.apache.hudi.hive.HiveSyncConfigHolder.HIVE_SKIP_RO_SUFFIX_FOR_READ_OPTIMIZED_TABLE;
@@ -375,9 +376,13 @@ public class HiveSyncTool extends HoodieSyncTool implements AutoCloseable {
         return false;
       }
 
-      List<Partition> hivePartitions = getTablePartitions(tableName, writtenPartitionsSince);
-      List<PartitionEvent> partitionEvents =
-          syncClient.getPartitionEvents(hivePartitions, writtenPartitionsSince, droppedPartitions);
+      List<PartitionEvent> partitionEvents;
+      if (config.getBooleanOrDefault(HIVE_SYNC_SKIP_UPDATE_EVENTS)) {
+        partitionEvents = syncClient.getPartitionAddAndDropEventsOnly(writtenPartitionsSince, droppedPartitions);
+      } else {
+        List<Partition> hivePartitions = getTablePartitions(tableName, writtenPartitionsSince);
+        partitionEvents = syncClient.getPartitionEvents(hivePartitions, writtenPartitionsSince, droppedPartitions);
+      }
 
       List<String> newPartitions = filterPartitions(partitionEvents, PartitionEventType.ADD);
       if (!newPartitions.isEmpty()) {

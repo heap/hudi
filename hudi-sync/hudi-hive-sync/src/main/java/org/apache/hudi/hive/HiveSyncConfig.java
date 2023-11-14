@@ -85,6 +85,11 @@ public class HiveSyncConfig extends HoodieSyncConfig {
       .withDocumentation("Max size limit to push down partition filters, if the estimate push down "
           + "filters exceed this size, will directly try to fetch all partitions");
 
+  public static final ConfigProperty<Boolean> HIVE_SYNC_SKIP_UPDATE_EVENTS = ConfigProperty
+          .key("hoodie.datasource.hive_sync.skip_update_events")
+          .defaultValue(false)
+          .withDocumentation("When true, only performs add and drop events, without fetching partitions from HMS");
+
   public static String getBucketSpec(String bucketCols, int bucketNum) {
     return "CLUSTERED BY (" + bucketCols + " INTO " + bucketNum + " BUCKETS";
   }
@@ -169,6 +174,9 @@ public class HiveSyncConfig extends HoodieSyncConfig {
     @Parameter(names = {"--sync-strategy"}, description = "Hive table synchronization strategy. Available option: RO, RT, ALL")
     public String syncStrategy;
 
+    @Parameter(names = {"--skip-update-events"}, description = "Whether to skip update events, which avoids fetching partitions from HMS")
+    public Boolean skipUpdateEvents;
+
     public boolean isHelp() {
       return hoodieSyncConfigParams.isHelp();
     }
@@ -197,6 +205,7 @@ public class HiveSyncConfig extends HoodieSyncConfig {
       props.setPropertyIfNonNull(HIVE_SYNC_BUCKET_SYNC_SPEC.key(), bucketSpec);
       props.setPropertyIfNonNull(HIVE_SYNC_COMMENT.key(), syncComment);
       props.setPropertyIfNonNull(HIVE_SYNC_TABLE_STRATEGY.key(), syncStrategy);
+      props.setPropertyIfNonNull(HIVE_SYNC_SKIP_UPDATE_EVENTS.key(), skipUpdateEvents);
       return props;
     }
   }
