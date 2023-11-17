@@ -27,6 +27,7 @@ import org.apache.hudi.common.table.view.HoodieTableFileSystemView
 import org.apache.hudi.common.util.StringUtils
 import org.apache.hudi.exception.HoodieException
 import org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.{getWritePartitionPaths, listAffectedFilesForCommits}
+import org.apache.log4j.LogManager
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.InternalRow
@@ -48,6 +49,7 @@ case class MergeOnReadIncrementalRelation(override val sqlContext: SQLContext,
   extends BaseMergeOnReadSnapshotRelation(sqlContext, optParams, metaClient, Seq(), userSchema, prunedDataSchema)
     with HoodieIncrementalRelationTrait {
 
+  private val log = LogManager.getLogger(MergeOnReadIncrementalRelation.getClass)
   override type Relation = MergeOnReadIncrementalRelation
 
   override def updatePrunedDataSchema(prunedSchema: StructType): Relation =
@@ -95,6 +97,7 @@ case class MergeOnReadIncrementalRelation(override val sqlContext: SQLContext,
       List()
     } else {
       val fileSlices = if (fullTableScan) {
+        log.info("Unable to fetch data incrementally, falling back to a full table scan.")
         listLatestFileSlices(Seq(), partitionFilters, dataFilters)
       } else {
         val latestCommit = includedCommits.last.getTimestamp
