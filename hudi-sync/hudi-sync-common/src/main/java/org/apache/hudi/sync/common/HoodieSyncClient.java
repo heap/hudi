@@ -164,4 +164,20 @@ public abstract class HoodieSyncClient implements HoodieMetaSyncOperations, Auto
     }
     return events;
   }
+
+  public List<PartitionEvent> getPartitionAddAndDropEventsOnly(List<String> partitionStoragePartitions, Set<String> droppedPartitions) {
+    List<PartitionEvent> events = new ArrayList<>();
+    for (String storagePartition : partitionStoragePartitions) {
+      List<String> storagePartitionValues = partitionValueExtractor.extractPartitionValuesInPath(storagePartition);
+
+      if (droppedPartitions.contains(storagePartition)) {
+        events.add(PartitionEvent.newPartitionDropEvent(storagePartition));
+      } else {
+        if (!storagePartitionValues.isEmpty()) {
+          events.add(PartitionEvent.newPartitionAddEvent(storagePartition));
+        }
+      }
+    }
+    return events;
+  }
 }
