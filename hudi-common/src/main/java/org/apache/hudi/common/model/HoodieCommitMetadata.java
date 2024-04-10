@@ -18,6 +18,7 @@
 
 package org.apache.hudi.common.model;
 
+import org.apache.hadoop.fs.GlobPattern;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.util.JsonUtils;
 import org.apache.hudi.common.util.Option;
@@ -174,18 +175,21 @@ public class HoodieCommitMetadata implements Serializable {
    * @param basePath The base path
    * @return the file full path to file status mapping
    */
-  public Map<String, FileStatus> getFullPathToFileStatus(Configuration hadoopConf, String basePath) {
+  public Map<String, FileStatus> getFullPathToFileStatus(Configuration hadoopConf, String basePath, String fileNamePattern) {
     Map<String, FileStatus> fullPathToFileStatus = new HashMap<>();
+    GlobPattern globMatcher = new GlobPattern(fileNamePattern);
     for (List<HoodieWriteStat> stats : getPartitionToWriteStats().values()) {
       // Iterate through all the written files.
       for (HoodieWriteStat stat : stats) {
         String relativeFilePath = stat.getPath();
-        Path fullPath = relativeFilePath != null ? FSUtils.getPartitionPath(basePath, relativeFilePath) : null;
-        if (fullPath != null) {
-          long blockSize = FSUtils.getFs(fullPath.toString(), hadoopConf).getDefaultBlockSize(fullPath);
-          FileStatus fileStatus = new FileStatus(stat.getFileSizeInBytes(), false, 0, blockSize,
-              0, fullPath);
-          fullPathToFileStatus.put(fullPath.getName(), fileStatus);
+        if (fileNamePattern.isEmpty() || globMatcher.matches(relativeFilePath)) {
+          Path fullPath = relativeFilePath != null ? FSUtils.getPartitionPath(basePath, relativeFilePath) : null;
+          if (fullPath != null) {
+            long blockSize = FSUtils.getFs(fullPath.toString(), hadoopConf).getDefaultBlockSize(fullPath);
+            FileStatus fileStatus = new FileStatus(stat.getFileSizeInBytes(), false, 0, blockSize,
+                    0, fullPath);
+            fullPathToFileStatus.put(fullPath.getName(), fileStatus);
+          }
         }
       }
     }
