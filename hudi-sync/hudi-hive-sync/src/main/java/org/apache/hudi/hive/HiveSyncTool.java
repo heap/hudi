@@ -283,7 +283,7 @@ public class HiveSyncTool extends HoodieSyncTool implements AutoCloseable {
       partitionsChanged = syncAllPartitions(tableName);
     } else {
       List<String> writtenPartitionsSince = syncClient.getWrittenPartitionsSince(lastCommitTimeSynced, lastCommitCompletionTimeSynced);
-      LOG.info("Found " + writtenPartitionsSince.size() + " new partitions");
+      LOG.info("Found " + writtenPartitionsSince.size() + " written partitions");
 
       // Sync the partitions if needed
       // find dropped partitions, if any, in the latest commit
