@@ -130,7 +130,7 @@ public abstract class BaseHoodieClient implements Serializable, AutoCloseable {
     }
   }
 
-  private synchronized void startEmbeddedServerView() {
+  public synchronized void startEmbeddedServerView() {
     if (config.isEmbeddedTimelineServerEnabled()) {
       if (!timelineServer.isPresent()) {
         // Run Embedded Timeline Server
