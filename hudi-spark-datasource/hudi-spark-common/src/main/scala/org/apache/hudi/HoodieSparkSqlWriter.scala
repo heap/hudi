@@ -450,7 +450,6 @@ class HoodieSparkSqlWriterInternal {
               // TODO(HUDI-4772) proper writer-schema has to be specified here
               DataSourceUtils.createHoodieClient(jsc, processedDataSchema.toString, path, tblName, finalOpts.asJava)
             }
-            client.startEmbeddedServerView()
 
             if (isAsyncCompactionEnabled(client, tableConfig, parameters, jsc.hadoopConfiguration())) {
               streamingWritesParamsOpt.map(_.asyncCompactionTriggerFn.get.apply(client))
