@@ -93,7 +93,6 @@ class HoodieStreamingSink(sqlContext: SQLContext,
 
   private var asyncCompactorService: AsyncCompactService = _
   private var asyncClusteringService: AsyncClusteringService = _
-  private var writeClient: Option[SparkRDDWriteClient[_]] = Option.empty
   private var hoodieTableConfig: Option[HoodieTableConfig] = Option.empty
 
   override def addBatch(batchId: Long, data: DataFrame): Unit = this.synchronized {
