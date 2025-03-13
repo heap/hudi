@@ -141,7 +141,7 @@ object CreateHoodieTableCommand {
       .getOrElse(catalog.getCurrentDatabase))
 
     val newTableIdentifier = table.identifier
-      .copy(table = tableName, database = Some(newDatabaseName))
+      .copy(table = tableName, database = Some(newDatabaseName), None)
 
     val partitionColumnNames = hoodieCatalogTable.partitionSchema.map(_.name)
     // Remove some properties should not be used;append pk, preCombineKey, type to the properties of table
