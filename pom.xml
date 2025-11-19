@@ -109,7 +109,7 @@
     <confluent.version>5.5.0</confluent.version>
     <glassfish.version>2.17</glassfish.version>
     <glassfish.el.version>3.0.1-b12</glassfish.el.version>
-    <parquet.version>1.10.1</parquet.version>
+    <parquet.version>1.15.2</parquet.version>
     <junit.jupiter.version>5.8.2</junit.jupiter.version>
     <junit.vintage.version>5.8.2</junit.vintage.version>
     <junit.platform.version>1.8.2</junit.platform.version>
@@ -138,7 +138,7 @@
     <spark.version>${spark3.version}</spark.version>
     <spark2.version>2.4.4</spark2.version>
     <spark3.version>3.5.1</spark3.version>
-    <sparkbundle.version></sparkbundle.version>
+    <sparkbundle.version/>
     <flink1.19.version>1.19.1</flink1.19.version>
     <flink1.18.version>1.18.1</flink1.18.version>
     <flink1.17.version>1.17.1</flink1.17.version>
@@ -168,7 +168,7 @@
     <spark35.version>3.5.1</spark35.version>
     <hudi.spark.module>hudi-spark3.5.x</hudi.spark.module>
     <hudi.spark.common.module>hudi-spark3-common</hudi.spark.common.module>
-    <avro.version>1.8.2</avro.version>
+    <avro.version>1.11.4</avro.version>
     <bijection-avro.version>0.9.7</bijection-avro.version>
     <caffeine.version>2.9.1</caffeine.version>
     <commons.io.version>2.11.0</commons.io.version>
@@ -679,7 +679,7 @@
               <license implementation="org.apache.rat.analysis.license.SimplePatternBasedLicense">
                 <licenseFamilyCategory>AL2 </licenseFamilyCategory>
                 <licenseFamilyName>Apache License 2.0</licenseFamilyName>
-                <notes />
+                <notes/>
                 <patterns>
                   <pattern>Licensed to the Apache Software Foundation (ASF) under one</pattern>
                 </patterns>
@@ -2310,9 +2310,9 @@
         <hudi.spark.module>hudi-spark2</hudi.spark.module>
         <hudi.spark.common.module>hudi-spark2-common</hudi.spark.common.module>
         <kafka.version>2.0.0</kafka.version>
-        <parquet.version>1.10.1</parquet.version>
+        <parquet.version>1.15.2</parquet.version>
         <orc.spark.version>1.6.0</orc.spark.version>
-        <avro.version>1.8.2</avro.version>
+        <avro.version>1.11.4</avro.version>
         <antlr.version>4.7</antlr.version>
         <fasterxml.version>2.6.7</fasterxml.version>
         <fasterxml.jackson.databind.version>${fasterxml.version}</fasterxml.jackson.databind.version>
@@ -2341,9 +2341,9 @@
         <hudi.spark.module>hudi-spark2</hudi.spark.module>
         <hudi.spark.common.module>hudi-spark2-common</hudi.spark.common.module>
         <kafka.version>2.0.0</kafka.version>
-        <parquet.version>1.10.1</parquet.version>
+        <parquet.version>1.15.2</parquet.version>
         <orc.spark.version>1.6.0</orc.spark.version>
-        <avro.version>1.8.2</avro.version>
+        <avro.version>1.11.4</avro.version>
         <antlr.version>4.7</antlr.version>
         <fasterxml.version>2.6.7</fasterxml.version>
         <fasterxml.jackson.databind.version>${fasterxml.version}</fasterxml.jackson.databind.version>
@@ -2394,9 +2394,9 @@
                    hudi-hadoop-mr, for ex). Since these Hudi modules might be used from w/in the execution engine(s)
                    bringing these file-formats as dependencies as well, we need to make sure that versions are
                    synchronized to avoid classpath ambiguity -->
-        <parquet.version>1.13.1</parquet.version>
+        <parquet.version>1.15.2</parquet.version>
         <orc.spark.version>1.9.1</orc.spark.version>
-        <avro.version>1.11.2</avro.version>
+        <avro.version>1.11.4</avro.version>
         <antlr.version>4.9.3</antlr.version>
         <fasterxml.spark3.version>2.15.2</fasterxml.spark3.version>
         <fasterxml.version>${fasterxml.spark3.version}</fasterxml.version>
@@ -2452,9 +2452,9 @@
                    hudi-hadoop-mr, for ex). Since these Hudi modules might be used from w/in the execution engine(s)
                    bringing these file-formats as dependencies as well, we need to make sure that versions are
                    synchronized to avoid classpath ambiguity -->
-        <parquet.version>1.12.2</parquet.version>
+        <parquet.version>1.15.2</parquet.version>
         <orc.spark.version>1.7.8</orc.spark.version>
-        <avro.version>1.11.1</avro.version>
+        <avro.version>1.11.4</avro.version>
         <antlr.version>4.8</antlr.version>
         <fasterxml.spark3.version>2.13.3</fasterxml.spark3.version>
         <fasterxml.version>${fasterxml.spark3.version}</fasterxml.version>
@@ -2494,9 +2494,9 @@
                    hudi-hadoop-mr, for ex). Since these Hudi modules might be used from w/in the execution engine(s)
                    bringing these file-formats as dependencies as well, we need to make sure that versions are
                    synchronized to avoid classpath ambiguity -->
-        <parquet.version>1.12.3</parquet.version>
+        <parquet.version>1.15.2</parquet.version>
         <orc.spark.version>1.8.3</orc.spark.version>
-        <avro.version>1.11.1</avro.version>
+        <avro.version>1.11.4</avro.version>
         <antlr.version>4.9.3</antlr.version>
         <fasterxml.spark3.version>2.14.2</fasterxml.spark3.version>
         <fasterxml.version>${fasterxml.spark3.version}</fasterxml.version>
@@ -2546,9 +2546,9 @@
                    hudi-hadoop-mr, for ex). Since these Hudi modules might be used from w/in the execution engine(s)
                    bringing these file-formats as dependencies as well, we need to make sure that versions are
                    synchronized to avoid classpath ambiguity -->
-        <parquet.version>1.13.1</parquet.version>
+        <parquet.version>1.15.2</parquet.version>
         <orc.spark.version>1.9.1</orc.spark.version>
-        <avro.version>1.11.2</avro.version>
+        <avro.version>1.11.4</avro.version>
         <antlr.version>4.9.3</antlr.version>
         <fasterxml.spark3.version>2.15.2</fasterxml.spark3.version>
         <fasterxml.version>${fasterxml.spark3.version}</fasterxml.version>
