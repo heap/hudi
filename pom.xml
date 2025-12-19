@@ -138,7 +138,7 @@
     <spark.version>${spark3.version}</spark.version>
     <spark2.version>2.4.4</spark2.version>
     <spark3.version>3.5.1</spark3.version>
-    <sparkbundle.version></sparkbundle.version>
+    <sparkbundle.version/>
     <flink1.19.version>1.19.1</flink1.19.version>
     <flink1.18.version>1.18.1</flink1.18.version>
     <flink1.17.version>1.17.1</flink1.17.version>
@@ -214,7 +214,7 @@
     <zk-curator.version>2.7.1</zk-curator.version>
     <disruptor.version>3.4.2</disruptor.version>
     <antlr.version>4.8</antlr.version>
-    <aws.sdk.version>2.25.69</aws.sdk.version>
+    <aws.sdk.version>2.40.12</aws.sdk.version>
     <proto.version>3.21.7</proto.version>
     <protoc.version>3.21.5</protoc.version>
     <dynamodb.lockclient.version>1.2.0</dynamodb.lockclient.version>
@@ -679,7 +679,7 @@
               <license implementation="org.apache.rat.analysis.license.SimplePatternBasedLicense">
                 <licenseFamilyCategory>AL2 </licenseFamilyCategory>
                 <licenseFamilyName>Apache License 2.0</licenseFamilyName>
-                <notes />
+                <notes/>
                 <patterns>
                   <pattern>Licensed to the Apache Software Foundation (ASF) under one</pattern>
                 </patterns>
