@@ -136,9 +136,9 @@
     <aws.sdk.httpcore.version>4.4.13</aws.sdk.httpcore.version>
     <http.version>4.4.1</http.version>
     <spark.version>${spark3.version}</spark.version>
-    <spark2.version>2.4.4</spark2.version>
+    <spark2.version>3.2.2</spark2.version>
     <spark3.version>3.5.1</spark3.version>
-    <sparkbundle.version></sparkbundle.version>
+    <sparkbundle.version/>
     <flink1.19.version>1.19.1</flink1.19.version>
     <flink1.18.version>1.18.1</flink1.18.version>
     <flink1.17.version>1.17.1</flink1.17.version>
@@ -679,7 +679,7 @@
               <license implementation="org.apache.rat.analysis.license.SimplePatternBasedLicense">
                 <licenseFamilyCategory>AL2 </licenseFamilyCategory>
                 <licenseFamilyName>Apache License 2.0</licenseFamilyName>
-                <notes />
+                <notes/>
                 <patterns>
                   <pattern>Licensed to the Apache Software Foundation (ASF) under one</pattern>
                 </patterns>
@@ -2360,7 +2360,7 @@
     <profile>
       <id>m1-mac</id>
       <properties>
-        <spark2.version>2.4.8</spark2.version>
+        <spark2.version>3.2.2</spark2.version>
       </properties>
       <activation>
         <os>
