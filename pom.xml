@@ -138,7 +138,7 @@
     <spark.version>${spark3.version}</spark.version>
     <spark2.version>2.4.4</spark2.version>
     <spark3.version>3.5.1</spark3.version>
-    <sparkbundle.version></sparkbundle.version>
+    <sparkbundle.version/>
     <flink1.19.version>1.19.1</flink1.19.version>
     <flink1.18.version>1.18.1</flink1.18.version>
     <flink1.17.version>1.17.1</flink1.17.version>
@@ -168,7 +168,7 @@
     <spark35.version>3.5.1</spark35.version>
     <hudi.spark.module>hudi-spark3.5.x</hudi.spark.module>
     <hudi.spark.common.module>hudi-spark3-common</hudi.spark.common.module>
-    <avro.version>1.8.2</avro.version>
+    <avro.version>1.12.1</avro.version>
     <bijection-avro.version>0.9.7</bijection-avro.version>
     <caffeine.version>2.9.1</caffeine.version>
     <commons.io.version>2.11.0</commons.io.version>
@@ -679,7 +679,7 @@
               <license implementation="org.apache.rat.analysis.license.SimplePatternBasedLicense">
                 <licenseFamilyCategory>AL2 </licenseFamilyCategory>
                 <licenseFamilyName>Apache License 2.0</licenseFamilyName>
-                <notes />
+                <notes/>
                 <patterns>
                   <pattern>Licensed to the Apache Software Foundation (ASF) under one</pattern>
                 </patterns>
@@ -2312,7 +2312,7 @@
         <kafka.version>2.0.0</kafka.version>
         <parquet.version>1.10.1</parquet.version>
         <orc.spark.version>1.6.0</orc.spark.version>
-        <avro.version>1.8.2</avro.version>
+        <avro.version>1.12.1</avro.version>
         <antlr.version>4.7</antlr.version>
         <fasterxml.version>2.6.7</fasterxml.version>
         <fasterxml.jackson.databind.version>${fasterxml.version}</fasterxml.jackson.databind.version>
@@ -2343,7 +2343,7 @@
         <kafka.version>2.0.0</kafka.version>
         <parquet.version>1.10.1</parquet.version>
         <orc.spark.version>1.6.0</orc.spark.version>
-        <avro.version>1.8.2</avro.version>
+        <avro.version>1.12.1</avro.version>
         <antlr.version>4.7</antlr.version>
         <fasterxml.version>2.6.7</fasterxml.version>
         <fasterxml.jackson.databind.version>${fasterxml.version}</fasterxml.jackson.databind.version>
@@ -2396,7 +2396,7 @@
                    synchronized to avoid classpath ambiguity -->
         <parquet.version>1.13.1</parquet.version>
         <orc.spark.version>1.9.1</orc.spark.version>
-        <avro.version>1.11.2</avro.version>
+        <avro.version>1.12.1</avro.version>
         <antlr.version>4.9.3</antlr.version>
         <fasterxml.spark3.version>2.15.2</fasterxml.spark3.version>
         <fasterxml.version>${fasterxml.spark3.version}</fasterxml.version>
@@ -2454,7 +2454,7 @@
                    synchronized to avoid classpath ambiguity -->
         <parquet.version>1.12.2</parquet.version>
         <orc.spark.version>1.7.8</orc.spark.version>
-        <avro.version>1.11.1</avro.version>
+        <avro.version>1.12.1</avro.version>
         <antlr.version>4.8</antlr.version>
         <fasterxml.spark3.version>2.13.3</fasterxml.spark3.version>
         <fasterxml.version>${fasterxml.spark3.version}</fasterxml.version>
@@ -2496,7 +2496,7 @@
                    synchronized to avoid classpath ambiguity -->
         <parquet.version>1.12.3</parquet.version>
         <orc.spark.version>1.8.3</orc.spark.version>
-        <avro.version>1.11.1</avro.version>
+        <avro.version>1.12.1</avro.version>
         <antlr.version>4.9.3</antlr.version>
         <fasterxml.spark3.version>2.14.2</fasterxml.spark3.version>
         <fasterxml.version>${fasterxml.spark3.version}</fasterxml.version>
@@ -2548,7 +2548,7 @@
                    synchronized to avoid classpath ambiguity -->
         <parquet.version>1.13.1</parquet.version>
         <orc.spark.version>1.9.1</orc.spark.version>
-        <avro.version>1.11.2</avro.version>
+        <avro.version>1.12.1</avro.version>
         <antlr.version>4.9.3</antlr.version>
         <fasterxml.spark3.version>2.15.2</fasterxml.spark3.version>
         <fasterxml.version>${fasterxml.spark3.version}</fasterxml.version>
