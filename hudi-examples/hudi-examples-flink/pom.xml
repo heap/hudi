@@ -30,7 +30,7 @@
     <properties>
         <main.basedir>${project.parent.basedir}</main.basedir>
         <checkstyle.skip>true</checkstyle.skip>
-        <parquet.version>${flink.format.parquet.version}</parquet.version>
+        <parquet.version>1.17.0</parquet.version>
     </properties>
 
     <build>
