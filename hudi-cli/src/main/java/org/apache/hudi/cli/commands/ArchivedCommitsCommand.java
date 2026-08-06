@@ -52,6 +52,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellOption;
+import scala.collection.JavaConverters;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -82,7 +83,7 @@ public class ArchivedCommitsCommand {
           help = "Spark executor memory") final String sparkMemory,
       @ShellOption(value = "--sparkMaster", defaultValue = "local", help = "Spark Master") String master) throws Exception {
     String sparkPropertiesPath =
-        Utils.getDefaultPropertiesFile(scala.collection.JavaConversions.propertiesAsScalaMap(System.getProperties()));
+        Utils.getDefaultPropertiesFile(JavaConverters.propertiesAsScalaMapConverter(System.getProperties()).asScala());
     SparkLauncher sparkLauncher = SparkUtil.initLauncher(sparkPropertiesPath);
     String cmd = SparkCommand.ARCHIVE.toString();
     sparkLauncher.addAppArgs(cmd, master, sparkMemory, Integer.toString(minCommits), Integer.toString(maxCommits),
