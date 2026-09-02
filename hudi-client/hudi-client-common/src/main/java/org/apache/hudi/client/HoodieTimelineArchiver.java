@@ -650,6 +650,7 @@ public class HoodieTimelineArchiver<T extends HoodieAvroPayload, I, K, O> {
 
   private IndexedRecord convertToAvroRecord(HoodieInstant hoodieInstant)
       throws IOException {
-    return MetadataConversionUtils.createMetaWrapper(hoodieInstant, metaClient);
+    return MetadataConversionUtils.createMetaWrapper(
+        hoodieInstant, metaClient, config.shouldArchiveTrimCleanActionMetadata());
   }
 }

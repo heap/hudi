@@ -1684,6 +1684,10 @@ public class HoodieWriteConfig extends HoodieConfig {
     return getInt(HoodieArchivalConfig.COMMITS_ARCHIVAL_BATCH_SIZE);
   }
 
+  public boolean shouldArchiveTrimCleanActionMetadata() {
+    return getBoolean(HoodieArchivalConfig.ARCHIVE_TRIM_CLEAN_ACTION_METADATA);
+  }
+
   public Boolean shouldCleanBootstrapBaseFile() {
     return getBoolean(HoodieCleanConfig.CLEANER_BOOTSTRAP_BASE_FILE_ENABLE);
   }
