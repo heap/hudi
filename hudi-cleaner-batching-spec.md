@@ -1,15 +1,32 @@
 # Spec: Batched/Paginated Cleaner Plans for Hudi (0.15.0 fork)
 
+## Status
+
+Implemented and available on `release-0.15.0-heap-fork`. This document started as the
+design plan; the sections below describe what was built, and where it differs from the
+original plan.
+
+| Commit | What |
+|---|---|
+| `6590f9bc320` | Feature: `hoodie.clean.plan.partitions.batch.size`, `BatchOverride`, `cleanInBatches()` |
+| `5a3735b3b21` | Unit tests for chunking, resume parsing and `BatchOverride`; chunking and parsing extracted into package-private helpers |
+| `be37a0ab48a` | Integration tests for legacy behavior, multiple instants, and resume |
+| `1d2287f9112` | `heapfork.version` bump to 0.2-SNAPSHOT |
+
+The datalake repo enables it for the events cleaner: `EventsCleanerUSE1`
+(`datalake_api/internal/cron/datalakecron_definitions.go`) passes
+`hoodie.clean.plan.partitions.batch.size=2000`, and the k8s cleaner builder
+(`datalake_api/internal/k8s/cleaner.go`) passes `CleanerPlanPartitionsBatchSize`.
+
 ## Context
 
-Our MOR table `events-v1` has ~6.7M partitions. A backlog accumulated because the
-cleaner ran with an incorrect `hoodie.cleaner.hours.retained=720` for a period
-before being reverted to `168`. When the cleaner tries to catch up, it computes
-a candidate partition list (currently via a full-table scan, since the
-incremental-mode checkpoint was invalidated by an over-aggressive archiver run),
-and serializes the resulting `HoodieCleanerPlan` as a single Avro-encoded byte
-array before persisting it. This blows past the JVM's hard array-size ceiling
-(`Integer.MAX_VALUE` bytes):
+Our MOR table `events-v1` has ~6.7M partitions. A backlog accumulated because the cleaner
+ran with an incorrect `hoodie.cleaner.hours.retained=720` for a period before being
+reverted to `168`. When the cleaner tries to catch up, it computes a candidate partition
+list (currently via a full-table scan, since the incremental-mode checkpoint was
+invalidated by an over-aggressive archiver run), and serializes the resulting
+`HoodieCleanerPlan` as a single Avro-encoded byte array before persisting it. This blows
+past the JVM's hard array-size ceiling (`Integer.MAX_VALUE` bytes):
 
 ```
 java.lang.OutOfMemoryError: Required array length 2147483639 + 139 is too large
@@ -19,179 +36,201 @@ java.lang.OutOfMemoryError: Required array length 2147483639 + 139 is too large
 	at org.apache.hudi.table.action.clean.CleanPlanActionExecutor.requestClean
 ```
 
-Working around this today by manually ratcheting `hoodie.cleaner.commits.retained`
-down in small steps is slow, imprecise (the "N commits" framing doesn't actually
-bound how much historical debt gets swept per run), and doesn't fix the
-underlying limitation for future incidents.
+Working around this by manually ratcheting `hoodie.cleaner.commits.retained` down in small
+steps is slow, imprecise (the "N commits" framing doesn't actually bound how much
+historical debt gets swept per run), and doesn't fix the underlying limitation for future
+incidents.
 
 ## Goal
 
-Add native support for **paginating a single logical clean operation into
-multiple bounded internal batches**, each going through Hudi's normal
-request → inflight → execute → complete instant lifecycle. This removes the
-single-giant-plan bottleneck directly, rather than working around it via
-retention-window tricks.
+Add native support for **paginating a single logical clean operation into multiple
+bounded internal batches**, each going through Hudi's normal request → inflight → execute
+→ complete instant lifecycle. This removes the single-giant-plan bottleneck directly,
+rather than working around it via retention-window tricks.
 
-This should be implemented as an **opt-in** capability (new config, defaults
-to disabled/current behavior) since this code is shared across many tables in
-our fork, and we don't want to change behavior for callers that don't ask for it.
+This is an **opt-in** capability (new config, defaults to disabled/current behavior)
+since this code is shared across many tables in our fork, and we don't want to change
+behavior for callers that don't ask for it.
 
 ## Non-goals
 
-- Do not change how `partitionsToClean` is computed (incremental vs. full-scan
-  decision in `CleanPlanner.getPartitionPathsForCleanByCommits` stays untouched).
+- Do not change how `partitionsToClean` is computed (incremental vs. full-scan decision
+  in `CleanPlanner.getPartitionPathsForCleanByCommits` stays untouched).
 - Do not change cleaning *policy* semantics (`KEEP_LATEST_BY_HOURS` /
   `KEEP_LATEST_COMMITS` continue to work exactly as before).
-- Do not attempt to fix the incremental-mode/archiver-interaction issue as part
-  of this change, that's a separate operational concern.
+- Do not attempt to fix the incremental-mode/archiver-interaction issue as part of this
+  change, that's a separate operational concern.
 
 ## Design overview
 
-1. Compute `earliestCommitToRetain` and the full `partitionsToClean` list
-   **once** per invocation, exactly as today.
-2. If a new config (`hoodie.clean.plan.partitions.batch.size`) is set and the
-   partition list exceeds it, split the list into deterministically-ordered
-   chunks of that size.
+1. Compute `earliestCommitToRetain` and the full `partitionsToClean` list **once** per
+   invocation, exactly as today.
+2. If `hoodie.clean.plan.partitions.batch.size` is a positive value, sort the list and
+   split it into deterministic chunks of at most that size.
 3. For each chunk, run a **separate** clean instant through the existing
-   request/inflight/execute/complete lifecycle, using the *same*
-   `earliestCommitToRetain` for every chunk in this run (this is important:
-   the boundary must stay fixed across the whole sweep, see "Correctness
-   requirement" below).
-4. Tag each resulting `HoodieCleanMetadata`'s `extraMetadata` with batch
-   bookkeeping so a restarted job can skip batches that already completed.
-5. Everything else (per-file delete idempotency, `hoodie.clean.allow.multiple`
-   crash-resume behavior) is inherited for free because each batch is a real,
-   independent instant on the timeline.
+   request/inflight/execute/complete lifecycle, using the *same* `earliestCommitToRetain`
+   for every chunk in this run (see "Correctness requirement").
+4. Tag each resulting clean instant's `extraMetadata` with batch bookkeeping so a
+   restarted job can skip batches that already completed.
+5. Everything else (per-file delete idempotency, crash-resume of a single instant) is
+   inherited because each batch is a real, independent instant on the timeline.
 
 ### Correctness requirement (must enforce)
 
-All batches produced by one "logical" paginated clean run **must** share the
-same `earliestCommitToRetain`. If the boundary were allowed to advance between
-batches, any partitions not yet covered by an earlier batch could become
-permanently invisible to future incremental cleaning (their old debris would
-never be revisited). See internal discussion doc for the full reasoning; this
-is the most important invariant to test for.
+All batches produced by one "logical" paginated clean run **must** share the same
+`earliestCommitToRetain`. If the boundary were allowed to advance between batches, any
+partitions not yet covered by an earlier batch could become permanently invisible to
+future incremental cleaning (their old debris would never be revisited). See internal
+discussion doc for the full reasoning; this is the most important invariant to test for.
 
-## Files to change
+## Implementation (as built)
 
-### 1. `hudi-client/hudi-client-common/.../config/HoodieCleanConfig.java`
+### Config
 
-Add a new config property:
+`HoodieCleanConfig.CLEANER_PLAN_PARTITIONS_BATCH_SIZE`
 
-```java
-public static final ConfigProperty<Integer> CLEANER_PLAN_PARTITIONS_BATCH_SIZE = ConfigProperty
-    .key("hoodie.clean.plan.partitions.batch.size")
-    .defaultValue(-1) // -1 = disabled, preserves current single-plan behavior
-    .markAdvanced()
-    .sinceVersion("0.15.0-heap-fork")
-    .withDocumentation("When set to a positive value, paginates a single "
-        + "cleaner invocation into multiple internally-batched clean instants, "
-        + "each covering at most this many partitions, to avoid building an "
-        + "oversized single HoodieCleanerPlan. Each batch shares the same "
-        + "earliestCommitToRetain boundary. Default (-1) preserves legacy "
-        + "single-plan behavior.");
-```
+- Key: `hoodie.clean.plan.partitions.batch.size`
+- Default `-1` (disabled, legacy single-plan behavior). Any value `> 0` enables batching.
+- Advanced config, `sinceVersion("0.15.0-heap-fork")`.
+- Builder: `HoodieCleanConfig.Builder#withCleanerPlanPartitionsBatchSize(int)`.
+  Getter: `HoodieWriteConfig#getCleanerPlanPartitionsBatchSize()`.
 
-Expose the usual `getCleanerPlanPartitionsBatchSize()` getter on
-`HoodieWriteConfig`, following the existing pattern for other clean configs
-in this file (see `CLEANER_POLICY`, `CLEANER_COMMITS_RETAINED`, etc. for the
-established style).
+### `CleanPlanActionExecutor`
 
-### 2. `hudi-client/hudi-client-common/.../table/action/clean/CleanPlanActionExecutor.java`
+- New `BatchOverride(List<String> partitions, Option<HoodieInstant> earliestInstant)`.
+  When present, `requestClean(HoodieEngineContext)` uses the supplied `earliestInstant`
+  and partition list instead of calling `planner.getEarliestCommitToRetain()` and
+  `planner.getPartitionPathsToClean(...)`.
+- The two values travel together because `CleanPlanner.getDeletePaths(partition,
+  earliestInstant)` drives per-file delete decisions off `earliestInstant`. Pinning only
+  the partitions would let each batch recompute the boundary and break the correctness
+  requirement.
+- The original five-argument constructor is kept and delegates with
+  `Option.empty()`, so existing callers are unaffected.
+- `requestClean(String startCleanTime)` is public and is called directly by the
+  orchestrator, skipping `execute()`'s trigger gate (see "Behavior notes").
+- Also fixes an existing dead-code bug in the same class: the
+  `Option<Map<String,String>> extraMetadata` constructor argument was stored but never
+  written into the plan. It is now merged into the plan's `extraMetadata` alongside the
+  savepointed timestamps. This is what carries the batch bookkeeping.
 
-- Add an optional constructor/field allowing an explicit partition list
-  override (`Option<List<String>> partitionsOverride`), used instead of
-  calling `planner.getPartitionPathsToClean(earliestInstant)` inside
-  `requestClean()` when present. This lets the batching orchestrator (below)
-  reuse this class per-chunk without re-deriving the candidate list each time.
-- No other changes needed here, the existing `requestClean()` body (building
-  `cleanOps` via `getDeletePaths` per partition, filtering empty results,
-  building the `HoodieCleanerPlan`) works unchanged on a smaller partition
-  list.
+### `BaseHoodieTableServiceClient#cleanInBatches`
 
-### 3. New orchestration method, e.g. `hudi-client/hudi-client-common/.../client/BaseHoodieTableServiceClient.java`
+`clean(String, boolean)` runs its usual preamble (table services enabled check, failed
+write rollback, `hoodie.cleaner.rollback_only` exit) and then, when the batch size is
+`> 0`, delegates to `cleanInBatches(cleanInstantTime, timerContext)`:
 
-Add `cleanInBatches(String cleanInstantTimePrefix)` (name TBD), invoked from
-`clean()` when `config.getCleanerPlanPartitionsBatchSize() > 0`:
+1. Create the table. If any `.clean.requested` or `.clean.inflight` instant is pending
+   from a prior crashed run, finish it first with `CleanActionExecutor` and reload the
+   timeline, so its completion is visible to the resume scan in step 5.
+2. Compute `earliestInstant = planner.getEarliestCommitToRetain()` and the full partition
+   list with `planner.getPartitionPathsToClean(earliestInstant)`, once.
+3. If the list is empty, release resources and return `null`.
+4. `chunkForBatchedClean(list, batchSize)`: copy, sort by natural string order, and slice.
+   Sorting makes chunk boundaries identical across restarts. Throws
+   `IllegalArgumentException` if `batchSize <= 0`.
+5. `findCompletedBatchIndices(...)`: scan completed `.clean` instants on the active
+   timeline and collect `batchIndex` values from those whose `extraMetadata` matches this
+   run's `targetEarliestCommitToRetain` and `totalBatches`.
+6. For each chunk index not already done:
+   - build `extraMetadata` with the three keys below;
+   - create a new instant time and a `CleanPlanActionExecutor` with
+     `BatchOverride(chunk, earliestInstant)`;
+   - call `requestClean(instantTime)`; if it returns no plan (nothing to delete in this
+     chunk) log and continue;
+   - run `CleanActionExecutor.execute()` to move the instant to inflight and complete it;
+   - update clean metrics and log `batch i/N`, files deleted, and
+     `earliestCommitToRetain`.
+7. Release resources and return the metadata of the last batch that produced one.
 
-```
-1. table = createTable(config, hadoopConf)
-2. planner = new CleanPlanner(context, table, config)
-3. earliestInstant = planner.getEarliestCommitToRetain()
-4. fullPartitionList = planner.getPartitionPathsToClean(earliestInstant)
-     // this is the expensive full-scan/incremental step; still done once
-5. sort fullPartitionList deterministically (e.g. natural string order)
-6. chunks = partition fullPartitionList into batches of config batch size
-7. totalBatches = chunks.size()
-8. alreadyDone = scan completed clean timeline for instants whose extraMetadata
-     contains matching {"targetEarliestCommitToRetain": earliestInstant, "totalBatches": totalBatches}
-     -> collect their "batchIndex" values into a set
-9. for i in 0 until totalBatches:
-     if i in alreadyDone: continue   // resume support, see below
-     instantTime = table.getMetaClient().createNewInstantTime()  // must be unique + increasing
-     executor = new CleanPlanActionExecutor(context, config, table, instantTime,
-                    Option.empty(), partitionsOverride = Option.of(chunks[i]))
-     plan = executor.requestClean(context)   // writes .clean.requested
-     // extraMetadata tagging: add batchIndex, totalBatches, targetEarliestCommitToRetain
-     // to the plan's extraMetadata map before/while persisting
-     table.getActiveTimeline().transitionCleanRequestedToInflight(...)
-     metadata = new CleanActionExecutor(context, config, table, instantTime).execute()
-     // completes the instant as usual
-     log/emit metrics: batch i/totalBatches, partitions=chunks[i].size(),
-                       filesDeleted=metadata.getTotalFilesDeleted()
-10. return combined/last HoodieCleanMetadata for caller compatibility
-```
+Bookkeeping keys, written to each batch's `extraMetadata`:
 
-**Resumability note**: step 8-9 means that if the whole job process crashes
-and is re-invoked, it will recompute `fullPartitionList` again (this repeats
-the relatively cheap listing step, not the risky serialization step) and then
-skip any batch index already recorded as completed via `extraMetadata`, so no
-duplicate work and no re-litigating of already-cleaned partitions. Within a
-single batch's own execution, the existing `hoodie.clean.allow.multiple=false`
-resume-on-crash behavior in `clean()` still applies unchanged.
+| Key | Value |
+|---|---|
+| `hoodie.clean.batch.targetEarliestCommitToRetain` | the pinned boundary's timestamp (empty string if none) |
+| `hoodie.clean.batch.totalBatches` | number of chunks in this run |
+| `hoodie.clean.batch.batchIndex` | zero-based index of this chunk |
 
-If tagging `extraMetadata` this way turns out to be awkward with the existing
-`HoodieCleanerPlan`/`HoodieCleanMetadata` avro schemas, an acceptable
-alternative is a small dedicated marker file under `.hoodie/.aux/` recording
-`{targetEarliestCommitToRetain, totalBatches, completedBatchIndices}`, updated
-after each batch completes. Prefer the extraMetadata approach first since it
-avoids introducing a new file format/location, fall back to the marker file
-only if schema changes are impractical.
+`parseCompletedBatchIndex(extra, target, totalBatches)` returns an index only when all
+three keys are present, the target and total match, and both numbers parse. Legacy
+(non-batched) instants, instants from other runs, and malformed entries are ignored.
 
-### 4. `hudi-utilities/.../HoodieCleaner.java`
+### `HoodieCleaner` (utilities)
 
-No functional change should be required here if `cleanInBatches` is invoked
-transparently from `clean()` based on the new config, this keeps the existing
-CLI invocation, orchestration job definition, metrics reporter, and Zookeeper
-lock provider config all working exactly as-is. Just confirm the new config
-key is picked up from the same `--hoodie-conf` / properties file mechanism
-already used for other cleaner configs.
+No change. The new key is read from `--hoodie-conf` or the properties file like other
+cleaner configs, and `client.clean()` reaches the batched path through
+`clean(String, boolean)`.
 
-## Testing plan
+## Differences from the original plan
 
-1. **Unit tests** for the chunking/resume logic: given a partition list and a
-   simulated set of "already completed" batch indices, verify the correct
-   remaining chunks are processed and none are skipped/duplicated.
-2. **Unit test** that all chunks in a single run use an identical
-   `earliestCommitToRetain` (the correctness invariant above).
-3. **Integration test** against a Hudi test table with a synthetically large
-   number of partitions and induced backlog, verifying: (a) legacy behavior
-   (`batch.size=-1`) is unchanged, (b) batched mode produces multiple
-   completed `.clean` instants, (c) simulating a crash mid-run (kill the job
-   after N batches) and re-running completes the remainder without
-   reprocessing completed batches or double-deleting files.
-4. **Before running against `events-v1` production**, validate against an
-   isolated clone of this table's `.hoodie` metadata (or a scaled-down
-   synthetic table with a comparable partition count) to confirm the
-   plan-size fix actually avoids the OOM at this scale, and that per-batch
-   timing/throughput is acceptable given ~6.7M partitions.
+| Original plan | As built |
+|---|---|
+| `CleanPlanActionExecutor` takes `Option<List<String>> partitionsOverride` | Takes `Option<BatchOverride>` carrying the partitions **and** the pinned `earliestInstant` |
+| Batch bookkeeping in `extraMetadata`, with a marker file under `.hoodie/.aux/` as a fallback | `extraMetadata` only. The marker file was not needed |
+| Orchestrator method name "TBD" | `cleanInBatches(String, Timer.Context)`, private, in `BaseHoodieTableServiceClient` |
+| Resume starts from the completed-batch scan | Also finishes any pending requested/inflight clean instant **before** the scan |
+| Chunking and resume parsing inline | Extracted to package-private `chunkForBatchedClean` and `parseCompletedBatchIndex` for unit testing |
+| Not mentioned | Fixes the dropped `extraMetadata` constructor argument in `CleanPlanActionExecutor` |
 
-## Rollout recommendation
+## Behavior notes and limitations
 
-- Ship with the new config defaulted to `-1` (disabled) so no other table
-  using this fork is affected.
-- Enable it explicitly only for `events-v1`'s cleaner job config initially.
-- Once validated in production for this table over a few cycles, consider
-  whether to recommend it as a default safeguard for other very-large-partition
-  tables in the fork (e.g., auto-enable above some partition-count threshold),
-  as a separate follow-up decision.
+These come from reading the code; they are not all covered by tests.
+
+- **The commits-since-last-clean trigger is bypassed.** `execute()` only plans when
+  `commitsSinceLastClean >= hoodie.clean.max.commits` (`needsCleaning`). The orchestrator
+  calls `requestClean(String)` directly for every batch, including the first, so with
+  batching on, each `clean()` invocation plans and runs regardless of that setting.
+  Calling it less often than before is therefore the caller's responsibility.
+- **`scheduleInline` is not used** in the batched path, and `hoodie.clean.allow.multiple`
+  is not consulted. Pending clean instants are always finished first.
+- **Batches with nothing to delete are not recorded.** They are re-planned on a resumed
+  run and produce nothing again, which costs a listing, not a delete.
+- **Resume identity is `(targetEarliestCommitToRetain, totalBatches)`.** If new commits
+  move the boundary, or the partition count changes the chunk count, a re-run is treated
+  as a new run and does not skip earlier batches. Deletes are idempotent, so this repeats
+  work instead of causing wrong deletes.
+- **Resume only sees completed clean instants still on the active timeline.** Batches
+  whose instants have been archived are not counted.
+- **Return value:** only the metadata of the last non-empty batch is returned; `null`
+  if every batch was empty.
+- **Metrics:** the same timer context is stopped once per batch, so the clean duration
+  reported for batch *k* is measured from the start of the whole run, not from the start
+  of that batch.
+
+## Testing
+
+Unit tests (`hudi-client-common`):
+
+- `TestBatchedCleanHelpers`
+  - chunking: empty list, smaller than batch, exactly one batch, even multiples, a
+    smaller final chunk, sort-before-chunk (so a restart gives the same layout), no
+    mutation of the input, and rejection of batch size `0` or negative;
+  - `parseCompletedBatchIndex`: null, empty, missing keys, mismatched target, mismatched
+    total, malformed numbers, a matching entry, and a legacy instant with only
+    savepoint metadata;
+  - the combined case: remaining chunks skip done indices without duplicating any.
+- `TestCleanPlanActionExecutorBatchOverride`: `BatchOverride` stores its fields, and
+  accepts an empty `earliestInstant`.
+
+Integration tests (`TestCleanPlanExecutor`):
+
+- `testCleanInBatchesDisabledPreservesLegacyPath`
+- `testCleanInBatchesProducesMultipleInstants`
+- `testCleanInBatchesResumeSkipsCompletedBatches`
+
+Not covered by tests in this repo:
+
+- A scale test at or near the ~6.7M-partition table size, to confirm the plan-size fix
+  avoids the OOM and that per-batch throughput is acceptable.
+- The behavior notes above, including the trigger bypass and the cumulative
+  per-batch timing.
+
+## Rollout
+
+- Ships with the config defaulted to `-1`, so other tables using this fork are
+  unaffected.
+- The datalake repo enables it for the events cleaner (`EventsCleanerUSE1`, batch size
+  2000). Enable it elsewhere only per table, through that table's cleaner job config.
+- Whether to recommend it as a default safeguard for other very-large-partition tables
+  (for example, auto-enabling above a partition-count threshold) remains a separate
+  follow-up decision.
