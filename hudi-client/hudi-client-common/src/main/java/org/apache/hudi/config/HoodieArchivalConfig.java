@@ -88,6 +88,17 @@ public class HoodieArchivalConfig extends HoodieConfig {
       .withDocumentation("Archiving of instants is batched in best-effort manner, to pack more instants into a single"
           + " archive log. This config controls such archival batch size.");
 
+  public static final ConfigProperty<Boolean> ARCHIVE_TRIM_CLEAN_ACTION_METADATA = ConfigProperty
+      .key("hoodie.archive.trim.clean.action.metadata")
+      .defaultValue(false)
+      .markAdvanced()
+      .withDocumentation("When true, per-partition file lists are stripped from HoodieCleanerPlan and "
+          + "HoodieCleanMetadata before they are wrapped into an archive log block. Prevents the "
+          + "archive log block from exceeding the JVM Integer.MAX_VALUE byte-array ceiling when "
+          + "archiving clean instants on tables with millions of partitions. Trade-off: the archived "
+          + "form of a clean instant no longer contains per-file replay detail — summary counts and "
+          + "retention boundary are preserved, but the delete-list-per-partition map is emptied.");
+
   public static final ConfigProperty<Integer> ARCHIVE_MERGE_FILES_BATCH_SIZE = ConfigProperty
       .key("hoodie.archive.merge.files.batch.size")
       .defaultValue(10)
@@ -208,6 +219,11 @@ public class HoodieArchivalConfig extends HoodieConfig {
 
     public HoodieArchivalConfig.Builder withCommitsArchivalBatchSize(int batchSize) {
       archivalConfig.setValue(COMMITS_ARCHIVAL_BATCH_SIZE, String.valueOf(batchSize));
+      return this;
+    }
+
+    public HoodieArchivalConfig.Builder withArchiveTrimCleanActionMetadata(boolean trim) {
+      archivalConfig.setValue(ARCHIVE_TRIM_CLEAN_ACTION_METADATA, String.valueOf(trim));
       return this;
     }
 

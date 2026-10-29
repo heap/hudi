@@ -1499,6 +1499,14 @@ public class HoodieWriteConfig extends HoodieConfig {
     return getInt(HoodieCleanConfig.CLEANER_HOURS_RETAINED);
   }
 
+  public boolean getCleanerRollbackOnly() {
+    return getBoolean(HoodieCleanConfig.CLEANER_ROLLBACK_ONLY);
+  }
+
+  public boolean parallelizePartitionCleaning() {
+    return getBoolean(HoodieCleanConfig.CLEANER_PARALLELIZE_PARTITION_CLEANING);
+  }
+
   public int getMaxCommitsToKeep() {
     return getInt(HoodieArchivalConfig.MAX_COMMITS_TO_KEEP);
   }
@@ -1537,6 +1545,10 @@ public class HoodieWriteConfig extends HoodieConfig {
 
   public int getCleanerParallelism() {
     return getInt(HoodieCleanConfig.CLEANER_PARALLELISM_VALUE);
+  }
+
+  public int getCleanerPlanPartitionsBatchSize() {
+    return getInt(HoodieCleanConfig.CLEANER_PLAN_PARTITIONS_BATCH_SIZE);
   }
 
   public int getCleaningMaxCommits() {
@@ -1670,6 +1682,10 @@ public class HoodieWriteConfig extends HoodieConfig {
 
   public int getCommitArchivalBatchSize() {
     return getInt(HoodieArchivalConfig.COMMITS_ARCHIVAL_BATCH_SIZE);
+  }
+
+  public boolean shouldArchiveTrimCleanActionMetadata() {
+    return getBoolean(HoodieArchivalConfig.ARCHIVE_TRIM_CLEAN_ACTION_METADATA);
   }
 
   public Boolean shouldCleanBootstrapBaseFile() {
