@@ -272,10 +272,11 @@ public class ParquetUtils extends FileFormatUtils {
     // Collect stats from all individual Parquet blocks
     Map<String, List<HoodieColumnRangeMetadata<Comparable>>> columnToStatsListMap =
         (Map<String, List<HoodieColumnRangeMetadata<Comparable>>>) metadata.getBlocks().stream().sequential()
-            .flatMap(blockMetaData ->
+            // explicit types: JDK 17 javac otherwise infers a raw HoodieColumnRangeMetadata and rejects the collector
+            .<HoodieColumnRangeMetadata<Comparable>>flatMap(blockMetaData ->
                 blockMetaData.getColumns().stream()
                     .filter(f -> columnList.contains(f.getPath().toDotString()))
-                    .map(columnChunkMetaData -> {
+                    .<HoodieColumnRangeMetadata<Comparable>>map(columnChunkMetaData -> {
                       Statistics stats = columnChunkMetaData.getStatistics();
                       return HoodieColumnRangeMetadata.<Comparable>create(
                           filePath.getName(),
