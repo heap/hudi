@@ -113,6 +113,14 @@ public class HoodieCommonConfig extends HoodieConfig {
           + " instead of the instant's commit time."
       );
 
+  public static final ConfigProperty<Integer> INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM = ConfigProperty
+      .key("hoodie.datasource.read.incr.commit.metadata.parallelism")
+      .defaultValue(32)
+      .markAdvanced()
+      .withDocumentation("When doing incremental queries, the number of threads used on the driver to read and parse "
+          + "the commit metadata files of the queried instants. The commits are still processed in timeline order. "
+          + "Set to 1 to read them sequentially.");
+
   public static final ConfigProperty<String> HOODIE_FS_ATOMIC_CREATION_SUPPORT = ConfigProperty
       .key("hoodie.fs.atomic_creation.support")
       .defaultValue("")
