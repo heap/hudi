@@ -248,7 +248,8 @@ public class HoodieTableMetadataUtil {
         Collectors.toMap(HoodieColumnRangeMetadata::getColumnName, Function.identity());
 
     return (Map<String, HoodieColumnRangeMetadata<Comparable>>) targetFields.stream()
-        .map(field -> {
+        // explicit type: JDK 17 javac otherwise infers a raw HoodieColumnRangeMetadata and rejects the collector
+        .<HoodieColumnRangeMetadata<Comparable>>map(field -> {
           ColumnStats colStats = allColumnStats.get(field.name());
           return HoodieColumnRangeMetadata.<Comparable>create(
               filePath,

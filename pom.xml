@@ -997,6 +997,14 @@
         <artifactId>orc-core</artifactId>
         <version>${orc.spark.version}</version>
         <scope>compile</scope>
+        <exclusions>
+          <!-- orc-shims pulls the shaded Hadoop 3 client API, whose classes reference shaded avro annotations
+               it does not ship; JDK 17 javac fails on them. Hadoop is provided by hadoop.version instead. -->
+          <exclusion>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-client-api</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
 
       <!-- RoaringBitmap -->

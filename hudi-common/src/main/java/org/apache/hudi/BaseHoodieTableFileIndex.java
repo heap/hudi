@@ -18,6 +18,7 @@
 
 package org.apache.hudi;
 
+import org.apache.hudi.common.config.HoodieCommonConfig;
 import org.apache.hudi.common.config.HoodieMetadataConfig;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.HoodieEngineContext;
@@ -87,6 +88,7 @@ public abstract class BaseHoodieTableFileIndex implements AutoCloseable {
   private final Option<String> specifiedQueryInstant;
   private final Option<String> beginInstantTime;
   private final Option<String> endInstantTime;
+  private final int incrementalCommitMetadataParallelism;
   private final List<StoragePath> queryPaths;
 
   private final boolean shouldIncludePendingCommits;
@@ -159,6 +161,11 @@ public abstract class BaseHoodieTableFileIndex implements AutoCloseable {
     this.shouldListLazily = shouldListLazily;
     this.beginInstantTime = beginInstantTime;
     this.endInstantTime = endInstantTime;
+    // only incremental queries read the commit metadata to list partitions
+    this.incrementalCommitMetadataParallelism = queryType == HoodieTableQueryType.INCREMENTAL
+        ? configProperties.getInteger(HoodieCommonConfig.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM.key(),
+            HoodieCommonConfig.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM.defaultValue())
+        : 1;
 
     this.basePath = metaClient.getBasePathV2();
 
@@ -315,7 +322,7 @@ public abstract class BaseHoodieTableFileIndex implements AutoCloseable {
         if (queryType == HoodieTableQueryType.INCREMENTAL && beginInstantTime.isPresent()) {
           HoodieTimeline timelineAfterBeginInstant = TimelineUtils.getCommitsTimelineAfter(metaClient, beginInstantTime.get(), Option.empty());
           HoodieTimeline timelineToQuery = endInstantTime.map(timelineAfterBeginInstant::findInstantsBeforeOrEquals).orElse(timelineAfterBeginInstant);
-          matchedPartitionPaths = TimelineUtils.getWrittenPartitions(timelineToQuery);
+          matchedPartitionPaths = TimelineUtils.getWrittenPartitions(timelineToQuery, incrementalCommitMetadataParallelism);
         } else {
           matchedPartitionPaths = tableMetadata.getPartitionPathWithPathPrefixes(relativePartitionPaths);
         }
