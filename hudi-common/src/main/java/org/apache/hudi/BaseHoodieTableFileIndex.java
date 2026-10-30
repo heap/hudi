@@ -161,9 +161,11 @@ public abstract class BaseHoodieTableFileIndex implements AutoCloseable {
     this.shouldListLazily = shouldListLazily;
     this.beginInstantTime = beginInstantTime;
     this.endInstantTime = endInstantTime;
-    this.incrementalCommitMetadataParallelism = configProperties.getInteger(
-        HoodieCommonConfig.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM.key(),
-        HoodieCommonConfig.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM.defaultValue());
+    // only incremental queries read the commit metadata to list partitions
+    this.incrementalCommitMetadataParallelism = queryType == HoodieTableQueryType.INCREMENTAL
+        ? configProperties.getInteger(HoodieCommonConfig.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM.key(),
+            HoodieCommonConfig.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM.defaultValue())
+        : 1;
 
     this.basePath = metaClient.getBasePathV2();
 

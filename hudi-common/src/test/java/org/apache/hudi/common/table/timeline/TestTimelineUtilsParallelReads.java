@@ -32,6 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -88,6 +90,32 @@ public class TestTimelineUtilsParallelReads {
       return instant;
     }, 8));
     assertEquals("failed 003", e.getMessage());
+  }
+
+  @Test
+  public void testErrorIsRethrownAsIs() {
+    OutOfMemoryError e = assertThrows(OutOfMemoryError.class, () -> TimelineUtils.mapInstantsInOrder(deltaCommits(4), instant -> {
+      throw new OutOfMemoryError("oom " + instant.getTimestamp());
+    }, 2));
+    assertEquals("oom 000", e.getMessage());
+  }
+
+  @Test
+  public void testPendingResultsAreBounded() {
+    AtomicInteger read = new AtomicInteger();
+    AtomicInteger consumed = new AtomicInteger();
+    AtomicInteger maxPending = new AtomicInteger();
+    // the consumer is slower than the readers, which must wait instead of reading every instant ahead
+    Consumer<HoodieInstant> slowConsumer = instant -> {
+      sleep(5);
+      consumed.incrementAndGet();
+    };
+    TimelineUtils.forEachInstantInOrder(deltaCommits(40), instant -> {
+      maxPending.accumulateAndGet(read.incrementAndGet() - consumed.get(), Math::max);
+      return instant;
+    }, 4, slowConsumer);
+    assertEquals(40, consumed.get());
+    assertTrue(maxPending.get() <= 8, "expected at most 8 pending results, got " + maxPending.get());
   }
 
   @Test

@@ -42,10 +42,14 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.AbstractMap;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -53,6 +57,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -170,12 +175,14 @@ public class TimelineUtils {
 
   /**
    * Same as {@link #getAffectedPartitions(HoodieTimeline)}, reading the instants' metadata with up to
-   * {@code parallelism} threads. Only the partition paths of each instant are kept in memory.
+   * {@code parallelism} threads. The partitions are deduplicated as each instant is consumed, so only the
+   * distinct partitions are kept in memory.
    */
   public static List<String> getAffectedPartitions(HoodieTimeline timeline, int parallelism) {
     List<HoodieInstant> instants = timeline.filterCompletedInstants().getInstants();
-    return mapInstantsInOrder(instants, s -> getAffectedPartitions(timeline, s).collect(Collectors.toList()), parallelism)
-        .stream().flatMap(List::stream).distinct().filter(s -> !s.isEmpty()).collect(Collectors.toList());
+    Set<String> partitions = new LinkedHashSet<>();
+    forEachInstantInOrder(instants, s -> getAffectedPartitions(timeline, s).collect(Collectors.toList()), parallelism, partitions::addAll);
+    return partitions.stream().filter(s -> !s.isEmpty()).collect(Collectors.toList());
   }
 
   private static Stream<String> getAffectedPartitions(HoodieTimeline timeline, HoodieInstant s) {
@@ -250,26 +257,39 @@ public class TimelineUtils {
   }
 
   /**
-   * Applies {@code fn} to each instant with a bounded pool of local threads (no engine job is launched).
-   * The results follow the order of {@code instants}, and if several instants fail, the failure of the
-   * earliest one in that order is rethrown, as with a sequential read.
+   * Same as {@link #forEachInstantInOrder}, collecting the results in the order of {@code instants}.
    */
   static <T> List<T> mapInstantsInOrder(List<HoodieInstant> instants, Function<HoodieInstant, T> fn, int parallelism) {
+    List<T> results = new ArrayList<>(instants.size());
+    forEachInstantInOrder(instants, fn, parallelism, results::add);
+    return results;
+  }
+
+  /**
+   * Applies {@code fn} to each instant with a bounded pool of local threads (no engine job is launched), and
+   * hands the results to {@code consumer} in the order of {@code instants}. At most twice as many instants as
+   * threads are submitted and not yet consumed at any time. If several instants fail, the failure of the
+   * earliest one in that order is rethrown, as with a sequential read.
+   */
+  static <T> void forEachInstantInOrder(List<HoodieInstant> instants, Function<HoodieInstant, T> fn, int parallelism,
+                                        Consumer<T> consumer) {
     if (parallelism <= 1 || instants.size() <= 1) {
-      return instants.stream().map(fn).collect(Collectors.toList());
+      instants.forEach(instant -> consumer.accept(fn.apply(instant)));
+      return;
     }
-    ExecutorService executor = Executors.newFixedThreadPool(Math.min(parallelism, instants.size()),
+    int numThreads = Math.min(parallelism, instants.size());
+    ExecutorService executor = Executors.newFixedThreadPool(numThreads,
         new CustomizedThreadFactory("hudi-commit-metadata-reader", true));
+    Deque<Future<T>> pending = new ArrayDeque<>();
     try {
-      List<Future<T>> futures = new ArrayList<>(instants.size());
-      for (HoodieInstant instant : instants) {
-        futures.add(executor.submit(() -> fn.apply(instant)));
+      Iterator<HoodieInstant> toSubmit = instants.iterator();
+      while (toSubmit.hasNext() || !pending.isEmpty()) {
+        while (toSubmit.hasNext() && pending.size() < 2 * numThreads) {
+          HoodieInstant instant = toSubmit.next();
+          pending.add(executor.submit(() -> fn.apply(instant)));
+        }
+        consumer.accept(pending.poll().get());
       }
-      List<T> results = new ArrayList<>(instants.size());
-      for (Future<T> future : futures) {
-        results.add(future.get());
-      }
-      return results;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new HoodieException("Interrupted while reading instants metadata", e);
@@ -278,9 +298,14 @@ public class TimelineUtils {
       if (cause instanceof RuntimeException) {
         throw (RuntimeException) cause;
       }
+      if (cause instanceof Error) {
+        throw (Error) cause;
+      }
       throw new HoodieException("Failed to read instants metadata", cause);
     } finally {
-      executor.shutdownNow();
+      // instants already being read complete on their own, instead of being interrupted in the middle of an I/O
+      pending.forEach(future -> future.cancel(false));
+      executor.shutdown();
     }
   }
 
