@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.AbstractMap;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -59,6 +60,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -273,22 +275,75 @@ public class TimelineUtils {
    */
   static <T> void forEachInstantInOrder(List<HoodieInstant> instants, Function<HoodieInstant, T> fn, int parallelism,
                                         Consumer<T> consumer) {
-    if (parallelism <= 1 || instants.size() <= 1) {
-      instants.forEach(instant -> consumer.accept(fn.apply(instant)));
+    forEachInOrder(instants, fn, parallelism, result -> {
+      consumer.accept(result);
+      return true;
+    });
+  }
+
+  /**
+   * Returns true as soon as {@code predicate} holds for one of the {@code items}, false if it holds for none.
+   * With {@code parallelism} above 1 the predicate is evaluated by the bounded pool of {@link #forEachInOrder},
+   * yet the outcome is that of a sequential scan in the order of {@code items}: the items are decided in that
+   * order, so the first one that matches or fails wins, and nothing is evaluated past it beyond the items
+   * already in flight. Failures are rethrown as they would be by the sequential scan.
+   */
+  public static <T> boolean anyMatchInOrder(List<T> items, IOPredicate<T> predicate, int parallelism) throws IOException {
+    boolean[] found = {false};
+    Function<T, Boolean> uncheckedPredicate = item -> {
+      try {
+        return predicate.test(item);
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    };
+    Predicate<Boolean> keepGoing = matches -> {
+      found[0] = matches;
+      return !matches;
+    };
+    try {
+      forEachInOrder(items, uncheckedPredicate, parallelism, keepGoing);
+    } catch (UncheckedIOException e) {
+      throw e.getCause();
+    }
+    return found[0];
+  }
+
+  /**
+   * A predicate that can fail with an {@link IOException}.
+   */
+  @FunctionalInterface
+  public interface IOPredicate<T> {
+    boolean test(T item) throws IOException;
+  }
+
+  /**
+   * Generic form of {@link #forEachInstantInOrder}: {@code consumer} returns false to stop, in which case the items
+   * not consumed yet are left aside (those already in flight complete on their own).
+   */
+  static <I, T> void forEachInOrder(List<I> items, Function<I, T> fn, int parallelism, Predicate<T> consumer) {
+    if (parallelism <= 1 || items.size() <= 1) {
+      for (I item : items) {
+        if (!consumer.test(fn.apply(item))) {
+          return;
+        }
+      }
       return;
     }
-    int numThreads = Math.min(parallelism, instants.size());
+    int numThreads = Math.min(parallelism, items.size());
     ExecutorService executor = Executors.newFixedThreadPool(numThreads,
         new CustomizedThreadFactory("hudi-commit-metadata-reader", true));
     Deque<Future<T>> pending = new ArrayDeque<>();
     try {
-      Iterator<HoodieInstant> toSubmit = instants.iterator();
+      Iterator<I> toSubmit = items.iterator();
       while (toSubmit.hasNext() || !pending.isEmpty()) {
         while (toSubmit.hasNext() && pending.size() < 2 * numThreads) {
-          HoodieInstant instant = toSubmit.next();
-          pending.add(executor.submit(() -> fn.apply(instant)));
+          I item = toSubmit.next();
+          pending.add(executor.submit(() -> fn.apply(item)));
         }
-        consumer.accept(pending.poll().get());
+        if (!consumer.test(pending.poll().get())) {
+          return;
+        }
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
