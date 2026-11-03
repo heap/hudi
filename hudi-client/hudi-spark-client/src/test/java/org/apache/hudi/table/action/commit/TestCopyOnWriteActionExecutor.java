@@ -475,7 +475,7 @@ public class TestCopyOnWriteActionExecutor extends HoodieClientTestBase implemen
             instantTime, context.parallelize(inserts));
     final List<List<WriteStatus>> ws = jsc.parallelize(Arrays.asList(1)).map(x -> {
       return actionExecutor.handleInsert(UUID.randomUUID().toString(), inserts.iterator());
-    }).map(Transformations::flatten).collect();
+    }).<List<WriteStatus>>map(Transformations::flatten).collect();
 
     WriteStatus writeStatus = ws.get(0).get(0);
     String fileId = writeStatus.getFileId();
@@ -494,7 +494,7 @@ public class TestCopyOnWriteActionExecutor extends HoodieClientTestBase implemen
             instantTime, context.parallelize(updates));
     final List<List<WriteStatus>> updateStatus = jsc.parallelize(Arrays.asList(1)).map(x -> {
       return newActionExecutor.handleUpdate(partitionPath, fileId, updates.iterator());
-    }).map(Transformations::flatten).collect();
+    }).<List<WriteStatus>>map(Transformations::flatten).collect();
     assertEquals(updates.size() - numRecordsInPartition,
         updateStatus.get(0).get(0).getTotalErrorRecords());
   }

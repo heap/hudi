@@ -226,6 +226,9 @@ object DataSourceReadOptions {
 
   val INCREMENTAL_READ_HANDLE_HOLLOW_COMMIT: ConfigProperty[String] = HoodieCommonConfig.INCREMENTAL_READ_HANDLE_HOLLOW_COMMIT
 
+  val INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM: ConfigProperty[java.lang.Integer] =
+    HoodieCommonConfig.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM
+
   /** @deprecated Use {@link QUERY_TYPE} and its methods instead */
   @Deprecated
   val QUERY_TYPE_OPT_KEY = QUERY_TYPE.key()

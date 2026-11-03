@@ -20,10 +20,10 @@ package org.apache.hudi
 import org.apache.hadoop.fs.{FileStatus, GlobPattern, Path}
 import org.apache.hudi.HoodieConversionUtils.toScalaOption
 import org.apache.hudi.HoodieSparkConfUtils.getHollowCommitHandling
-import org.apache.hudi.common.model.{FileSlice, HoodieRecord}
+import org.apache.hudi.common.model.{FileSlice, HoodieCommitMetadata, HoodieRecord}
 import org.apache.hudi.common.table.HoodieTableMetaClient
 import org.apache.hudi.common.table.timeline.TimelineUtils.HollowCommitHandling.USE_TRANSITION_TIME
-import org.apache.hudi.common.table.timeline.TimelineUtils.{HollowCommitHandling, getCommitMetadata, handleHollowCommitIfNeeded}
+import org.apache.hudi.common.table.timeline.TimelineUtils.{HollowCommitHandling, getCommitsMetadata, handleHollowCommitIfNeeded}
 import org.apache.hudi.common.table.timeline.{HoodieInstant, HoodieTimeline}
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView
 import org.apache.hudi.common.util.StringUtils
@@ -179,7 +179,8 @@ trait HoodieIncrementalRelationTrait extends HoodieBaseRelation {
     }
   }
 
-  protected lazy val commitsMetadata = includedCommits.map(getCommitMetadata(_, super.timeline)).asJava
+  protected lazy val commitsMetadata: java.util.List[HoodieCommitMetadata] =
+    getCommitsMetadata(includedCommits.asJava, super.timeline, commitMetadataParallelism)
 
   protected lazy val affectedFilesInCommits: java.util.List[StoragePathInfo] = {
     listAffectedFilesForCommits(conf, metaClient.getBasePathV2, commitsMetadata, "*" + globPathPattern)
@@ -239,5 +240,9 @@ trait HoodieIncrementalRelationTrait extends HoodieBaseRelation {
 
   protected def globPartitionPattern: String =
     optParams.getOrElse(DataSourceReadOptions.INCR_PARTITION_GLOB.key, DataSourceReadOptions.INCR_PARTITION_GLOB.defaultValue)
+
+  protected def commitMetadataParallelism: Int =
+    optParams.getOrElse(DataSourceReadOptions.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM.key,
+      DataSourceReadOptions.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM.defaultValue.toString).toInt
 }
 
