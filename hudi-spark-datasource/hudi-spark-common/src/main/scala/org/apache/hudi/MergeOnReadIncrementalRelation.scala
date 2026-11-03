@@ -23,7 +23,7 @@ import org.apache.hudi.HoodieSparkConfUtils.getHollowCommitHandling
 import org.apache.hudi.common.model.{FileSlice, HoodieCommitMetadata, HoodieRecord}
 import org.apache.hudi.common.table.HoodieTableMetaClient
 import org.apache.hudi.common.table.timeline.TimelineUtils.HollowCommitHandling.USE_TRANSITION_TIME
-import org.apache.hudi.common.table.timeline.TimelineUtils.{HollowCommitHandling, getCommitsMetadata, handleHollowCommitIfNeeded}
+import org.apache.hudi.common.table.timeline.TimelineUtils.{HollowCommitHandling, anyMatchInOrder, getCommitsMetadata, handleHollowCommitIfNeeded}
 import org.apache.hudi.common.table.timeline.{HoodieInstant, HoodieTimeline}
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView
 import org.apache.hudi.common.util.StringUtils
@@ -162,7 +162,16 @@ trait HoodieIncrementalRelationTrait extends HoodieBaseRelation {
       DataSourceReadOptions.INCREMENTAL_FALLBACK_TO_FULL_TABLE_SCAN.defaultValue).toBoolean
 
     fallbackToFullTableScan && (startInstantArchived || endInstantArchived
-      || affectedFilesInCommits.asScala.exists(fileStatus => !metaClient.getStorage.exists(fileStatus.getPath)))
+      || anyAffectedFileMissing)
+  }
+
+  // One existence check per affected file, run with the pool and the parallelism of the commit metadata reads.
+  // The result is that of a sequential scan: true as soon as a file is missing, false if all of them exist.
+  private def anyAffectedFileMissing: Boolean = {
+    // metaClient.getStorage initializes lazily and is not synchronized: resolve it before the pool runs
+    val storage = metaClient.getStorage
+    anyMatchInOrder(affectedFilesInCommits, (fileStatus: StoragePathInfo) => !storage.exists(fileStatus.getPath),
+      commitMetadataParallelism)
   }
 
   protected lazy val includedCommits: immutable.Seq[HoodieInstant] = {

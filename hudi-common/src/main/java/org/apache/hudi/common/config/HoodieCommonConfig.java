@@ -119,8 +119,10 @@ public class HoodieCommonConfig extends HoodieConfig {
       .markAdvanced()
       .withDocumentation("Number of threads used on the driver to read and parse the commit metadata files of the "
           + "queried instants, when planning a Merge-On-Read incremental query and when the file index lists the "
-          + "partitions written by an incremental query. The commits are still processed in timeline order. "
-          + "The default 1 reads them sequentially. The Copy-On-Write incremental relation ignores this option.");
+          + "partitions written by an incremental query. It also sets the number of threads checking that the files "
+          + "written by those commits still exist, when hoodie.datasource.read.incr.fallback.fulltablescan.enable is "
+          + "true. The commits and files are still processed in order. The default 1 does it all sequentially. "
+          + "The Copy-On-Write incremental relation ignores this option.");
 
   public static final ConfigProperty<String> HOODIE_FS_ATOMIC_CREATION_SUPPORT = ConfigProperty
       .key("hoodie.fs.atomic_creation.support")
