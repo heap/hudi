@@ -162,6 +162,12 @@ object DataSourceReadOptions {
     .withDocumentation("For the use-cases like users only want to incremental pull from certain partitions "
       + "instead of the full table. This option allows using glob pattern to directly filter on path.")
 
+  val INCR_PARTITION_GLOB: ConfigProperty[String] = ConfigProperty
+    .key("hoodie.datasource.read.incr.partition.glob")
+    .defaultValue("")
+    .withDocumentation("For the use-cases like users only want to incremental pull from certain partitions "
+      + "instead of the full table. This option allows using glob pattern to directly filter on partition.")
+
   val TIME_TRAVEL_AS_OF_INSTANT: ConfigProperty[String] = HoodieCommonConfig.TIMESTAMP_AS_OF
 
   val ENABLE_DATA_SKIPPING: ConfigProperty[Boolean] = ConfigProperty
@@ -219,6 +225,9 @@ object DataSourceReadOptions {
   val SCHEMA_EVOLUTION_ENABLED: ConfigProperty[java.lang.Boolean] = HoodieCommonConfig.SCHEMA_EVOLUTION_ENABLE
 
   val INCREMENTAL_READ_HANDLE_HOLLOW_COMMIT: ConfigProperty[String] = HoodieCommonConfig.INCREMENTAL_READ_HANDLE_HOLLOW_COMMIT
+
+  val INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM: ConfigProperty[java.lang.Integer] =
+    HoodieCommonConfig.INCREMENTAL_READ_COMMIT_METADATA_PARALLELISM
 
   /** @deprecated Use {@link QUERY_TYPE} and its methods instead */
   @Deprecated

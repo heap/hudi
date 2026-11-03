@@ -21,7 +21,10 @@ package org.apache.hudi.client.utils;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.util.Collections;
 import org.apache.hudi.avro.model.HoodieArchivedMetaEntry;
+import org.apache.hudi.avro.model.HoodieCleanMetadata;
+import org.apache.hudi.avro.model.HoodieCleanerPlan;
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
 import org.apache.hudi.avro.model.HoodieRequestedReplaceMetadata;
 import org.apache.hudi.avro.model.HoodieRollbackMetadata;
@@ -47,6 +50,22 @@ import org.apache.hudi.common.util.Option;
 public class MetadataConversionUtils {
 
   public static HoodieArchivedMetaEntry createMetaWrapper(HoodieInstant hoodieInstant, HoodieTableMetaClient metaClient) throws IOException {
+    return createMetaWrapper(hoodieInstant, metaClient, false);
+  }
+
+  /**
+   * Build an archive log entry for {@code hoodieInstant}.
+   *
+   * <p>When {@code trimCleanActionMetadata} is true, per-partition file lists are stripped from
+   * {@link HoodieCleanerPlan} and {@link HoodieCleanMetadata} before they are wrapped. On tables
+   * with millions of partitions those maps dominate the serialized block size and can push a
+   * single instant's Avro block past the JVM 2GB byte-array ceiling. Callers that don't rely on
+   * the archived clean plan's file-level replay detail should enable
+   * {@code hoodie.archive.trim.clean.action.metadata} to opt in.
+   */
+  public static HoodieArchivedMetaEntry createMetaWrapper(HoodieInstant hoodieInstant,
+                                                          HoodieTableMetaClient metaClient,
+                                                          boolean trimCleanActionMetadata) throws IOException {
     Option<byte[]> instantDetails = metaClient.getActiveTimeline().getInstantDetails(hoodieInstant);
     if (hoodieInstant.isCompleted() && instantDetails.get().length == 0) {
       // in local FS and HDFS, there could be empty completed instants due to crash.
@@ -60,9 +79,17 @@ public class MetadataConversionUtils {
     switch (hoodieInstant.getAction()) {
       case HoodieTimeline.CLEAN_ACTION: {
         if (hoodieInstant.isCompleted()) {
-          archivedMetaWrapper.setHoodieCleanMetadata(CleanerUtils.getCleanerMetadata(metaClient, instantDetails.get()));
+          HoodieCleanMetadata cleanMetadata = CleanerUtils.getCleanerMetadata(metaClient, instantDetails.get());
+          if (trimCleanActionMetadata) {
+            trimCleanMetadataInPlace(cleanMetadata);
+          }
+          archivedMetaWrapper.setHoodieCleanMetadata(cleanMetadata);
         } else {
-          archivedMetaWrapper.setHoodieCleanerPlan(CleanerUtils.getCleanerPlan(metaClient, instantDetails.get()));
+          HoodieCleanerPlan cleanerPlan = CleanerUtils.getCleanerPlan(metaClient, instantDetails.get());
+          if (trimCleanActionMetadata) {
+            trimCleanerPlanInPlace(cleanerPlan);
+          }
+          archivedMetaWrapper.setHoodieCleanerPlan(cleanerPlan);
         }
         archivedMetaWrapper.setActionType(ActionType.clean.name());
         break;
@@ -200,6 +227,35 @@ public class MetadataConversionUtils {
   public static Option<HoodieCommitMetadata> getHoodieCommitMetadata(HoodieTableMetaClient metaClient, HoodieInstant hoodieInstant) throws IOException {
     HoodieTimeline timeline = metaClient.getActiveTimeline().getCommitsTimeline().filterCompletedInstants();
     return Option.of(TimelineUtils.getCommitMetadata(hoodieInstant, timeline));
+  }
+
+  /**
+   * Strip the per-partition file-path maps from a HoodieCleanerPlan. Retention boundary,
+   * policy, version, and extraMetadata are preserved. The freed fields hold what is fat on
+   * a millions-of-partitions table.
+   *
+   * <p>The plan object is deserialized fresh in {@link #createMetaWrapper} and does not
+   * outlive that call, so in-place mutation is safe and avoids allocating a rebuilt copy of
+   * the very maps we are trying not to hold in memory.
+   */
+  private static void trimCleanerPlanInPlace(HoodieCleanerPlan plan) {
+    plan.setFilesToBeDeletedPerPartition(null);
+    plan.setFilePathsToBeDeletedPerPartition(null);
+    plan.setPartitionsToBeDeleted(null);
+  }
+
+  /**
+   * Strip the per-partition metadata map from a HoodieCleanMetadata. startCleanTime,
+   * timeTakenInMillis, totalFilesDeleted, earliestCommitToRetain,
+   * lastCompletedCommitTimestamp, version, and extraMetadata are preserved so the archived
+   * form still carries the retention boundary and summary counts.
+   *
+   * <p>{@code partitionMetadata} is a required (non-nullable) Avro field, so it must be set
+   * to an empty map rather than null.
+   */
+  private static void trimCleanMetadataInPlace(HoodieCleanMetadata metadata) {
+    metadata.setPartitionMetadata(Collections.emptyMap());
+    metadata.setBootstrapPartitionMetadata(null);
   }
 
   public static org.apache.hudi.avro.model.HoodieCommitMetadata convertCommitMetadata(

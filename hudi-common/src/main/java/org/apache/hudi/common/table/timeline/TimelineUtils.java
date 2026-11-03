@@ -28,6 +28,7 @@ import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.util.CleanerUtils;
 import org.apache.hudi.common.util.ClusteringUtils;
 import org.apache.hudi.common.util.CollectionUtils;
+import org.apache.hudi.common.util.CustomizedThreadFactory;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.ValidationUtils;
@@ -41,12 +42,23 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.AbstractMap;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -76,8 +88,16 @@ public class TimelineUtils {
    * Does not include internal operations such as clean in the timeline.
    */
   public static List<String> getWrittenPartitions(HoodieTimeline timeline) {
+    return getWrittenPartitions(timeline, 1);
+  }
+
+  /**
+   * Same as {@link #getWrittenPartitions(HoodieTimeline)}, reading the instants' metadata with up to
+   * {@code parallelism} threads.
+   */
+  public static List<String> getWrittenPartitions(HoodieTimeline timeline, int parallelism) {
     HoodieTimeline timelineToSync = timeline.getWriteTimeline();
-    return getAffectedPartitions(timelineToSync);
+    return getAffectedPartitions(timelineToSync, parallelism);
   }
 
   /**
@@ -105,7 +125,9 @@ public class TimelineUtils {
             .map(partition -> new AbstractMap.SimpleEntry<>(partition, pair.getLeft().getTimestamp()))
         ).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (existing, replace) -> replace));
     // cleaner could delete a partition when there are no active filegroups in the partition
-    HoodieTimeline cleanerTimeline = metaClient.getActiveTimeline().getCleanerTimeline().filterCompletedInstants();
+    HoodieTimeline cleanerTimeline = lastCommitTimeSynced.isPresent()
+        ? TimelineUtils.getCleanerTimelineAfter(metaClient, lastCommitTimeSynced.get(), lastCommitCompletionTimeSynced).filterCompletedInstants()
+        : metaClient.getActiveTimeline().getCleanerTimeline().filterCompletedInstants();
     cleanerTimeline.getInstantsAsStream()
         .forEach(instant -> {
           try {
@@ -138,7 +160,6 @@ public class TimelineUtils {
             throw new HoodieIOException("Failed to get partitions writes at " + instant, e);
           }
         }).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (existing, replace) -> replace));
-
     return partitionToLatestDeleteTimestamp.entrySet().stream()
         .filter(entry -> !partitionToLatestWriteTimestamp.containsKey(entry.getKey())
             || compareTimestamps(entry.getValue(), GREATER_THAN, partitionToLatestWriteTimestamp.get(entry.getKey()))
@@ -149,63 +170,143 @@ public class TimelineUtils {
    * Returns partitions that have been modified including internal operations such as clean in the passed timeline.
    */
   public static List<String> getAffectedPartitions(HoodieTimeline timeline) {
-    return timeline.filterCompletedInstants().getInstantsAsStream().flatMap(s -> {
-      switch (s.getAction()) {
-        case COMMIT_ACTION:
-        case DELTA_COMMIT_ACTION:
-          try {
-            HoodieCommitMetadata commitMetadata = HoodieCommitMetadata.fromBytes(timeline.getInstantDetails(s).get(), HoodieCommitMetadata.class);
-            return commitMetadata.getPartitionToWriteStats().keySet().stream();
-          } catch (IOException e) {
-            throw new HoodieIOException("Failed to get partitions written at " + s, e);
-          }
-        case REPLACE_COMMIT_ACTION:
-          try {
-            HoodieReplaceCommitMetadata commitMetadata = HoodieReplaceCommitMetadata.fromBytes(
-                timeline.getInstantDetails(s).get(), HoodieReplaceCommitMetadata.class);
-            Set<String> partitions = new HashSet<>();
-            partitions.addAll(commitMetadata.getPartitionToReplaceFileIds().keySet());
-            partitions.addAll(commitMetadata.getPartitionToWriteStats().keySet());
-            return partitions.stream();
-          } catch (IOException e) {
-            throw new HoodieIOException("Failed to get partitions modified at " + s, e);
-          }
-        case HoodieTimeline.CLEAN_ACTION:
-          try {
-            HoodieCleanMetadata cleanMetadata = TimelineMetadataUtils.deserializeHoodieCleanMetadata(timeline.getInstantDetails(s).get());
-            return cleanMetadata.getPartitionMetadata().keySet().stream();
-          } catch (IOException e) {
-            throw new HoodieIOException("Failed to get partitions cleaned at " + s, e);
-          }
-        case HoodieTimeline.ROLLBACK_ACTION:
-          try {
-            return TimelineMetadataUtils.deserializeHoodieRollbackMetadata(timeline.getInstantDetails(s).get()).getPartitionMetadata().keySet().stream();
-          } catch (IOException e) {
-            throw new HoodieIOException("Failed to get partitions rolledback at " + s, e);
-          }
-        case HoodieTimeline.RESTORE_ACTION:
-          try {
-            HoodieRestoreMetadata restoreMetadata = TimelineMetadataUtils.deserializeAvroMetadata(timeline.getInstantDetails(s).get(), HoodieRestoreMetadata.class);
-            return restoreMetadata.getHoodieRestoreMetadata().values().stream()
-                .flatMap(Collection::stream)
-                .flatMap(rollbackMetadata -> rollbackMetadata.getPartitionMetadata().keySet().stream());
-          } catch (IOException e) {
-            throw new HoodieIOException("Failed to get partitions restored at " + s, e);
-          }
-        case HoodieTimeline.SAVEPOINT_ACTION:
-          try {
-            return TimelineMetadataUtils.deserializeHoodieSavepointMetadata(timeline.getInstantDetails(s).get()).getPartitionMetadata().keySet().stream();
-          } catch (IOException e) {
-            throw new HoodieIOException("Failed to get partitions savepoint at " + s, e);
-          }
-        case HoodieTimeline.COMPACTION_ACTION:
-          // compaction is not a completed instant.  So no need to consider this action.
-          return Stream.empty();
-        default:
-          throw new HoodieIOException("unknown action in timeline " + s.getAction());
-      }
+    return getAffectedPartitions(timeline, 1);
+  }
 
-    }).distinct().filter(s -> !s.isEmpty()).collect(Collectors.toList());
+  /**
+   * Same as {@link #getAffectedPartitions(HoodieTimeline)}, reading the instants' metadata with up to
+   * {@code parallelism} threads. The partitions are deduplicated as each instant is consumed, so only the
+   * distinct partitions are kept in memory.
+   */
+  public static List<String> getAffectedPartitions(HoodieTimeline timeline, int parallelism) {
+    List<HoodieInstant> instants = timeline.filterCompletedInstants().getInstants();
+    Set<String> partitions = new LinkedHashSet<>();
+    forEachInstantInOrder(instants, s -> getAffectedPartitions(timeline, s).collect(Collectors.toList()), parallelism, partitions::addAll);
+    return partitions.stream().filter(s -> !s.isEmpty()).collect(Collectors.toList());
+  }
+
+  private static Stream<String> getAffectedPartitions(HoodieTimeline timeline, HoodieInstant s) {
+    switch (s.getAction()) {
+      case COMMIT_ACTION:
+      case DELTA_COMMIT_ACTION:
+        try {
+          HoodieCommitMetadata commitMetadata = HoodieCommitMetadata.fromBytes(timeline.getInstantDetails(s).get(), HoodieCommitMetadata.class);
+          return commitMetadata.getPartitionToWriteStats().keySet().stream();
+        } catch (IOException e) {
+          throw new HoodieIOException("Failed to get partitions written at " + s, e);
+        }
+      case REPLACE_COMMIT_ACTION:
+        try {
+          HoodieReplaceCommitMetadata commitMetadata = HoodieReplaceCommitMetadata.fromBytes(
+              timeline.getInstantDetails(s).get(), HoodieReplaceCommitMetadata.class);
+          Set<String> partitions = new HashSet<>();
+          partitions.addAll(commitMetadata.getPartitionToReplaceFileIds().keySet());
+          partitions.addAll(commitMetadata.getPartitionToWriteStats().keySet());
+          return partitions.stream();
+        } catch (IOException e) {
+          throw new HoodieIOException("Failed to get partitions modified at " + s, e);
+        }
+      case HoodieTimeline.CLEAN_ACTION:
+        try {
+          HoodieCleanMetadata cleanMetadata = TimelineMetadataUtils.deserializeHoodieCleanMetadata(timeline.getInstantDetails(s).get());
+          return cleanMetadata.getPartitionMetadata().keySet().stream();
+        } catch (IOException e) {
+          throw new HoodieIOException("Failed to get partitions cleaned at " + s, e);
+        }
+      case HoodieTimeline.ROLLBACK_ACTION:
+        try {
+          return TimelineMetadataUtils.deserializeHoodieRollbackMetadata(timeline.getInstantDetails(s).get()).getPartitionMetadata().keySet().stream();
+        } catch (IOException e) {
+          throw new HoodieIOException("Failed to get partitions rolledback at " + s, e);
+        }
+      case HoodieTimeline.RESTORE_ACTION:
+        try {
+          HoodieRestoreMetadata restoreMetadata = TimelineMetadataUtils.deserializeAvroMetadata(timeline.getInstantDetails(s).get(), HoodieRestoreMetadata.class);
+          return restoreMetadata.getHoodieRestoreMetadata().values().stream()
+              .flatMap(Collection::stream)
+              .flatMap(rollbackMetadata -> rollbackMetadata.getPartitionMetadata().keySet().stream());
+        } catch (IOException e) {
+          throw new HoodieIOException("Failed to get partitions restored at " + s, e);
+        }
+      case HoodieTimeline.SAVEPOINT_ACTION:
+        try {
+          return TimelineMetadataUtils.deserializeHoodieSavepointMetadata(timeline.getInstantDetails(s).get()).getPartitionMetadata().keySet().stream();
+        } catch (IOException e) {
+          throw new HoodieIOException("Failed to get partitions savepoint at " + s, e);
+        }
+      case HoodieTimeline.COMPACTION_ACTION:
+        // compaction is not a completed instant.  So no need to consider this action.
+        return Stream.empty();
+      default:
+        throw new HoodieIOException("unknown action in timeline " + s.getAction());
+    }
+  }
+
+  /**
+   * Reads the commit metadata of the given instants with up to {@code parallelism} threads.
+   * The returned list follows the order of {@code instants}.
+   */
+  public static List<HoodieCommitMetadata> getCommitsMetadata(List<HoodieInstant> instants, HoodieTimeline timeline, int parallelism) {
+    return mapInstantsInOrder(instants, instant -> {
+      try {
+        return getCommitMetadata(instant, timeline);
+      } catch (IOException e) {
+        throw new HoodieIOException("Failed to get commit metadata for " + instant, e);
+      }
+    }, parallelism);
+  }
+
+  /**
+   * Same as {@link #forEachInstantInOrder}, collecting the results in the order of {@code instants}.
+   */
+  static <T> List<T> mapInstantsInOrder(List<HoodieInstant> instants, Function<HoodieInstant, T> fn, int parallelism) {
+    List<T> results = new ArrayList<>(instants.size());
+    forEachInstantInOrder(instants, fn, parallelism, results::add);
+    return results;
+  }
+
+  /**
+   * Applies {@code fn} to each instant with a bounded pool of local threads (no engine job is launched), and
+   * hands the results to {@code consumer} in the order of {@code instants}. At most twice as many instants as
+   * threads are submitted and not yet consumed at any time. If several instants fail, the failure of the
+   * earliest one in that order is rethrown, as with a sequential read.
+   */
+  static <T> void forEachInstantInOrder(List<HoodieInstant> instants, Function<HoodieInstant, T> fn, int parallelism,
+                                        Consumer<T> consumer) {
+    if (parallelism <= 1 || instants.size() <= 1) {
+      instants.forEach(instant -> consumer.accept(fn.apply(instant)));
+      return;
+    }
+    int numThreads = Math.min(parallelism, instants.size());
+    ExecutorService executor = Executors.newFixedThreadPool(numThreads,
+        new CustomizedThreadFactory("hudi-commit-metadata-reader", true));
+    Deque<Future<T>> pending = new ArrayDeque<>();
+    try {
+      Iterator<HoodieInstant> toSubmit = instants.iterator();
+      while (toSubmit.hasNext() || !pending.isEmpty()) {
+        while (toSubmit.hasNext() && pending.size() < 2 * numThreads) {
+          HoodieInstant instant = toSubmit.next();
+          pending.add(executor.submit(() -> fn.apply(instant)));
+        }
+        consumer.accept(pending.poll().get());
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new HoodieException("Interrupted while reading instants metadata", e);
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof RuntimeException) {
+        throw (RuntimeException) cause;
+      }
+      if (cause instanceof Error) {
+        throw (Error) cause;
+      }
+      throw new HoodieException("Failed to read instants metadata", cause);
+    } finally {
+      // instants already being read complete on their own, instead of being interrupted in the middle of an I/O
+      pending.forEach(future -> future.cancel(false));
+      executor.shutdown();
+    }
   }
 
   /**
@@ -213,7 +314,7 @@ public class TimelineUtils {
    */
   public static Option<String> getExtraMetadataFromLatest(HoodieTableMetaClient metaClient, String extraMetadataKey) {
     return metaClient.getCommitsTimeline().filterCompletedInstants().getReverseOrderedInstants()
-        // exclude clustering commits for returning user stored extra metadata 
+        // exclude clustering commits for returning user stored extra metadata
         .filter(instant -> !isClusteringCommit(metaClient, instant))
         .findFirst().map(instant ->
             getMetadataValue(metaClient, extraMetadataKey, instant)).orElse(Option.empty());
@@ -252,7 +353,7 @@ public class TimelineUtils {
   public static boolean isClusteringCommit(HoodieTableMetaClient metaClient, HoodieInstant instant) {
     try {
       if (REPLACE_COMMIT_ACTION.equals(instant.getAction())) {
-        // replacecommit is used for multiple operations: insert_overwrite/cluster etc. 
+        // replacecommit is used for multiple operations: insert_overwrite/cluster etc.
         // Check operation type to see if this instant is related to clustering.
         HoodieReplaceCommitMetadata replaceMetadata = HoodieReplaceCommitMetadata.fromBytes(
             metaClient.getActiveTimeline().getInstantDetails(instant).get(), HoodieReplaceCommitMetadata.class);
@@ -304,6 +405,28 @@ public class TimelineUtils {
     }
 
     return timelineSinceLastSync;
+  }
+
+  /**
+   * Returns a Hudi timeline with cleaner commits after the given instant time (exclusive).
+   * Assumes all required clean commits are on the active timeline.
+   *
+   * @param metaClient                {@link HoodieTableMetaClient} instance.
+   * @param exclusiveStartInstantTime Start instant time (exclusive).
+   * @param lastMaxCompletionTime     Last commit max completion time synced
+   * @return Hudi timeline.
+   */
+  public static HoodieTimeline getCleanerTimelineAfter(
+          HoodieTableMetaClient metaClient, String exclusiveStartInstantTime, Option<String> lastMaxCompletionTime) {
+    HoodieTimeline cleanerTimeline = metaClient.getActiveTimeline().getCleanerTimeline();
+
+    // return commits meeting one of the conditions:
+    // - instant timestamp (start time) after `exclusiveStartInstantTime`
+    // - instant timestamp (start time) before `exclusiveStartInstantTime` and transition time after `lastMaxCompletionTime`
+    return cleanerTimeline.filter(s ->
+      compareTimestamps(s.getTimestamp(), GREATER_THAN, exclusiveStartInstantTime)
+              || (compareTimestamps(s.getTimestamp(), LESSER_THAN, exclusiveStartInstantTime) && compareTimestamps(s.getStateTransitionTime(), GREATER_THAN, lastMaxCompletionTime.get()))
+    );
   }
 
   /**

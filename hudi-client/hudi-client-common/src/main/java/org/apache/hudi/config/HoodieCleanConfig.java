@@ -50,6 +50,9 @@ public class HoodieCleanConfig extends HoodieConfig {
 
   private static final String CLEANER_COMMITS_RETAINED_KEY = "hoodie.cleaner.commits.retained";
   private static final String CLEANER_HOURS_RETAINED_KEY = "hoodie.cleaner.hours.retained";
+
+  private static final String CLEANER_ROLLBACK_ONLY_KEY = "hoodie.cleaner.rollback_only";
+  private static final String CLEANER_PARALLELIZE_PARTITION_CLEANING_KEY = "hoodie.cleaner.parallelize_partition_cleaning";
   private static final String CLEANER_FILE_VERSIONS_RETAINED_KEY = "hoodie.cleaner.fileversions.retained";
 
   public static final ConfigProperty<String> AUTO_CLEAN = ConfigProperty
@@ -110,6 +113,16 @@ public class HoodieCleanConfig extends HoodieConfig {
           + "This config provides a more flexible option as compared to number of commits retained for cleaning service. Setting this property ensures "
           + "all the files, but the latest in a file group, corresponding to commits with commit times older than the configured number of hours to be retained are cleaned.");
 
+  public static final ConfigProperty<String> CLEANER_ROLLBACK_ONLY = ConfigProperty.key(CLEANER_ROLLBACK_ONLY_KEY)
+          .defaultValue("false")
+          .markAdvanced()
+          .withDocumentation("TODO");
+
+  public static final ConfigProperty<String> CLEANER_PARALLELIZE_PARTITION_CLEANING = ConfigProperty.key(CLEANER_PARALLELIZE_PARTITION_CLEANING_KEY)
+        .defaultValue("false")
+        .markAdvanced()
+        .withDocumentation("If there are any partitions to be deleted in the clean plan, setting this to true will parallelize this deletion. Otherwise the deletes will be processed by the driver");
+
   public static final ConfigProperty<String> CLEANER_FILE_VERSIONS_RETAINED = ConfigProperty
       .key(CLEANER_FILE_VERSIONS_RETAINED_KEY)
       .defaultValue("3")
@@ -150,6 +163,17 @@ public class HoodieCleanConfig extends HoodieConfig {
       })
       .markAdvanced()
       .withDocumentation(HoodieFailedWritesCleaningPolicy.class);
+
+  public static final ConfigProperty<Integer> CLEANER_PLAN_PARTITIONS_BATCH_SIZE = ConfigProperty
+      .key("hoodie.clean.plan.partitions.batch.size")
+      .defaultValue(-1)
+      .markAdvanced()
+      .sinceVersion("0.15.0-heap-fork")
+      .withDocumentation("When set to a positive value, paginates a single cleaner invocation "
+          + "into multiple internally-batched clean instants, each covering at most this many "
+          + "partitions, to avoid building an oversized single HoodieCleanerPlan. Each batch "
+          + "shares the same earliestCommitToRetain boundary. Default (-1) preserves legacy "
+          + "single-plan behavior.");
 
   public static final ConfigProperty<String> CLEANER_PARALLELISM_VALUE = ConfigProperty
       .key("hoodie.cleaner.parallelism")
@@ -334,6 +358,11 @@ public class HoodieCleanConfig extends HoodieConfig {
 
     public HoodieCleanConfig.Builder withCleanerParallelism(int cleanerParallelism) {
       cleanConfig.setValue(CLEANER_PARALLELISM_VALUE, String.valueOf(cleanerParallelism));
+      return this;
+    }
+
+    public HoodieCleanConfig.Builder withCleanerPlanPartitionsBatchSize(int batchSize) {
+      cleanConfig.setValue(CLEANER_PLAN_PARTITIONS_BATCH_SIZE, String.valueOf(batchSize));
       return this;
     }
 
